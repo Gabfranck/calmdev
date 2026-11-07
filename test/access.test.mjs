@@ -53,6 +53,7 @@ test('Sessions: the sandbox, what is unreadable, the env stripped by name, the t
   assert.ok(s.unreadable.readRules.includes('Read(//**/.env)'));
   assert.equal(s.unreadable.count, s.unreadable.denyRead.length + s.unreadable.readRules.length);
   assert.deepEqual(s.env.stripped, ['GITHUB_TOKEN', 'OPENAI_API_KEY'], 'by name, ANTHROPIC_ kept');
+  assert.deepEqual(s.env.added, { npm_config_ignore_scripts: 'true' }, 'npm runs no install script in a session');
   assert.ok(!/sk-val-1|ghp-val-2/.test(JSON.stringify(r)), 'names, never values');
   assert.deepEqual(s.tools.sessions, SESSION_TOOLS);
   assert.deepEqual(s.denied.map((d) => [d.rule, d.scope]), [['Bash(rm -rf*)', 'utilisateur'], ['Bash(git push*)', 'projet'], ['Bash(npm publish*)', 'projet']]);

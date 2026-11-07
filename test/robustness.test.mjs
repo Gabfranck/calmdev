@@ -145,12 +145,12 @@ test('the queue at parallel 1: two todo sessions, one runs, the other waits queu
   assert.deepEqual((await S.get('/api/plan/file')).plan.sessions.map((s) => s.id), ['A', 'B', 'C'], 'A is still there');
   // the refusal of 1 November: the plan read by GET (prompts with the state instruction, stopMeta) sent back with one more session is accepted
   const read = (await S.get('/api/plan/file')).plan;
-  assert.doesNotMatch(read.sessions[0].prompt, /escadrille:state/, 'FRU (MUET): the read prompt is the prompt as written');
-  await until(() => S.prompts().some((p) => /escadrille:state/.test(p.text))); // the launched process still gets the state instruction
+  assert.doesNotMatch(read.sessions[0].prompt, /(?:calmdev|escadrille):state/, 'FRU (MUET): the read prompt is the prompt as written');
+  await until(() => S.prompts().some((p) => /calmdev:state/.test(p.text))); // the launched process still gets the state instruction
   v = await S.post('/api/plan', { ...read, sessions: [...read.sessions, { id: 'D', name: 'Relue', path: root, model: 'claude-sonnet-5-5', stops: ['La fin'], prompt: 'Ajoutée après relecture.' }] });
   assert.equal(v.status, 200, JSON.stringify(v.body));
   assert.deepEqual((await S.get('/api/plan/file')).plan.sessions.map((s) => s.id), ['A', 'B', 'C', 'D']);
-  assert.equal((await S.get('/api/plan/file')).plan.sessions[0].prompt.match(/escadrille:state\n/g), null, 'the instruction is neither stored nor sent');
+  assert.equal((await S.get('/api/plan/file')).plan.sessions[0].prompt.match(/(?:calmdev|escadrille):state\n/g), null, 'the instruction is neither stored nor sent');
   v = await S.post('/api/plan', { ...read, sessions: read.sessions.map((x) => (x.id === 'A' ? { ...x, model: 'claude-opus-5-5' } : x)) });
   assert.equal(v.status, 409); assert.match(v.body.error, /A est lancée \(running\) : elle ne peut plus changer \(model\)/);
   // A goes through its four turns (one permission each) and says done
@@ -175,7 +175,7 @@ test('an interrupted turn resumes on its own after a restart of the server, with
   await until(async () => (await S.session('reprise', 'A')).pending.some((p) => p.kind === 'permission'));
   await S.stop();
   const S2 = boot({}, S); await S2.ready();
-  await until(() => S2.prompts().some((p) => p.session_id === 'sess-9' && p.text === 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc escadrille:state.'));
+  await until(() => S2.prompts().some((p) => p.session_id === 'sess-9' && p.text === 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc calmdev:state.'));
   assert.equal(S2.args()[S2.args().indexOf('--resume') + 1], 'sess-9');
   const A = await S2.session('reprise', 'A');
   assert.equal(A.status, 'running', 'the turn is running again, nobody had to write');

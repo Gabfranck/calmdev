@@ -10,16 +10,18 @@ runs them sandboxed on your Mac, and only interrupts you when one needs you.
 You need Node 22.13+, git, and Claude Code 2.1 already logged in (run `claude` once). macOS or Linux.
 
 ```sh
-git clone https://github.com/Gabfranck/Escadrille escadrille && cd escadrille && ./install.sh
+git clone https://github.com/Gabfranck/calmdev-private calmdev && cd calmdev && ./install.sh
 ```
+
+Or, from the folder of a project, with nothing to clone: `npx github:Gabfranck/calmdev` (same checks, same options; the data stays in `~/.config/calmdev`).
 
 The repository, the folder, `.escadrille/`, `~/.config/escadrille/` and the `ESCADRILLE_*` variables keep the
 project's former name: they are identifiers, kept so that existing installs go on working.
 
 `install.sh` checks what is missing and says how to get it (it installs nothing itself), then starts the
-server and opens `http://localhost:3078` in its own window, without tabs or address bar (Chrome, Edge, Brave
-or Chromium in app mode, a separate profile in `~/.escadrille/app-profile`; `./install.sh --tab` opens a tab instead, `./install.sh --no-open` opens nothing,
-`./run.sh --open` reopens the window while the server runs). No `npm install`: the server has no dependency. Ctrl-C stops it;
+server and opens it: the Mac app when it is installed (`/Applications/calmdev.app`, see `docs/desktop.md`), else
+`http://localhost:3078` in the default browser (`./install.sh --tab` always opens a tab, `./install.sh --no-open` opens nothing,
+`./run.sh --open` reopens it while the server runs). No `npm install`: the server has no dependency. Ctrl-C stops it;
 `./install.sh` starts it again. Without Claude Code, `install.sh` says so and starts nothing. It does not check that
 Claude Code is logged in (that cannot be told without a network call): run `claude` once and log in before the first plan.
 `node scripts/fresh-install.mjs` replays this install on a clean clone and a temporary home (what the maintainers run before publishing).

@@ -38,14 +38,36 @@ sur le Mac, 4 sautés, 1 077 passés, 0 échec hors la ligne du dépôt privé d
 
 Les tests restent sur le faux `claude` (`test/fake-claude.mjs`) : aucun n'appelle le vrai, ni le réseau, ni un paiement.
 
+### Ce que le premier passage a appris (7 novembre, run 42315765123)
+
+Sept échecs, tous dans les tests, aucun dans le code livré ; aucun test sauté pour les régler :
+- **Un PATH de faux ne s'allonge jamais de `/usr/bin:/bin` entiers** : le runner y a `bwrap` (installé plus haut) et
+  `google-chrome`. `test/linux.test.mjs` et `test/open-app.test.mjs` montent un dossier d'outils système nommés
+  (`sed`, `cut`, `git`…), chacun un wrapper vers le vrai.
+- **Node 22.13 est le plancher** : il n'importe pas un `.ts` sans drapeau (`test/phone-projects.test.mjs` retire les
+  types par `module.stripTypeScriptTypes`) et ignore l'option `timeout` de `DatabaseSync`, arrivée en 22.16 (la base
+  s'ouvre par `lib/sqlite.mjs`, qui pose `pragma busy_timeout` ; sans lui, `database is locked` sur macOS).
+- **Un port de test n'est jamais un port éphémère** : Linux tire ses ports éphémères au hasard et les donne aussi aux
+  connexions sortantes ; un port relâché par `freePort` était repris avant que le serveur du test s'y lie, et le test
+  parlait à un autre serveur (les délais d'`api.test` et `qa.test` sous Linux). `test/free-port.mjs` tire entre 20000
+  et 32767 et réserve le port entre processus. Diagnostic sans le journal sous la main : à vérifier au prochain passage.
+
 ## release.yml : l'app desktop et le paquet npm
 
 ### Sur un tag `v*` : le .dmg en brouillon
 
-- Job `desktop` sur `macos-latest` : Rust stable (rustup du runner), `npm ci` dans `desktop/` (la CLI Tauri de
-  `desktop/package-lock.json`), puis `tauri build --bundles dmg`.
-- Le `.dmg` (`desktop/src-tauri/target/release/bundle/dmg/`) est attaché à une **GitHub Release en brouillon**
-  (`gh release create --draft`) ; un brouillon déjà là reçoit le fichier à la place. Seul ce job a `contents: write`.
+- Job `desktop` sur `macos-latest`. **Première étape** : « Secrets present? » liste dans le résumé du job (`GITHUB_STEP_SUMMARY`)
+  les secrets absents parmi les huit attendus (noms seulement) ; si `TAURI_SIGNING_PRIVATE_KEY` ou son mot de passe manque,
+  elle échoue (`::error::`) avant tout checkout et tout build ; les `APPLE_*` absents ne donnent qu'un avertissement.
+  Puis : le tag doit valoir `v` + la `version` de `tauri.conf.json` ; Rust stable (rustup du runner) avec les deux cibles
+  `aarch64-apple-darwin` et `x86_64-apple-darwin` ; `npm ci` dans `desktop/` (la CLI Tauri de `desktop/package-lock.json`) ;
+  `tauri build --target universal-apple-darwin --bundles app,dmg` (un seul binaire pour Apple Silicon et Intel).
+- Sont attachés à une **GitHub Release en brouillon** (`gh release create --draft`), depuis
+  `desktop/src-tauri/target/universal-apple-darwin/release/bundle/` : le `.dmg`, le `calmdev.app.tar.gz` de la mise à jour,
+  sa `.sig` (signée par `TAURI_SIGNING_PRIVATE_KEY`, minisign) et un `latest.json` (version, signature, URL du tag, pour
+  `darwin-aarch64` et `darwin-x86_64`) que l'app installée lit à `releases/latest/download/latest.json` (docs/desktop.md).
+  Un brouillon déjà là reçoit les fichiers à la place. Seul ce job a `contents: write`. Le pas à pas de Dev (certificat,
+  clé, secrets, tag, publication) est dans docs/desktop.md, « Publier une version ».
 - **Signature Apple** : branchée seulement si `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` et
   `APPLE_SIGNING_IDENTITY` existent ; Tauri signe, puis notarise si `APPLE_ID`, `APPLE_PASSWORD` et `APPLE_TEAM_ID`
   existent aussi. Sans eux, le `.dmg` est construit non signé et le passage porte un avertissement ; la note du brouillon
@@ -67,6 +89,7 @@ Les tests restent sur le faux `claude` (`test/fake-claude.mjs`) : aucun n'appell
 | `TRACE_WORDS` | dépôt | les noms privés que le scan cherche (facultatif) |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | dépôt | signer le `.dmg` (facultatif) |
 | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | dépôt | notariser (facultatif) |
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | dépôt | signer la mise à jour (`.app.tar.gz.sig`) ; sans eux le job de release s'arrête |
 | `NPM_TOKEN` | environnement `release` | publier sur npm |
 
 `GITHUB_TOKEN` est fourni par GitHub, rien à créer.
@@ -80,7 +103,7 @@ Les tests restent sur le faux `claude` (`test/fake-claude.mjs`) : aucun n'appell
    plus légère, sur `dev` si voulu.
 3. **Settings > Actions > General** : « Read repository contents permission » par défaut ; exiger l'approbation des
    workflows pour les contributeurs extérieurs.
-4. **Settings > Secrets and variables > Actions** : `TRACE_WORDS`, puis les `APPLE_*` le jour où la signature est prête.
+4. **Settings > Secrets and variables > Actions** : `TRACE_WORDS`, puis les `APPLE_*` et les deux `TAURI_SIGNING_*` (docs/desktop.md, « Publier une version »).
 
 ## Vérifié en local, et ce qui ne l'est pas
 
@@ -89,7 +112,12 @@ Les tests restent sur le faux `claude` (`test/fake-claude.mjs`) : aucun n'appell
 - `actionlint` n'est pas installé sur la machine : il n'a pas tourné.
 - Les actions sont épinglées sur un commit (`actions/checkout` v4.2.2, `actions/setup-node` v4.4.0) ; ces empreintes ont
   été écrites sans accès réseau : le premier passage sur GitHub les confirme (un commit inconnu échoue dès la première étape).
-- Le passage Linux, la construction du `.dmg` et la signature n'ont jamais tourné : ils tourneront au premier push.
+- `test/updater.test.mjs` vérifie le build universel, les huit secrets, le brouillon, la forme de `latest.json` (le script du
+  workflow est exécuté), l'endpoint, `createUpdaterArtifacts` et le placeholder de la clé publique qui coupe la vérification.
+- `cargo check` avec les deux nouvelles crates passe en local, sans avertissement (7 novembre ; `tauri-plugin-updater`
+  2.14.1, `tauri-plugin-dialog` 2.8.4, `Cargo.lock` à jour).
+- Le passage Linux, la construction du `.dmg` (universel), la signature et la mise à jour réelle n'ont jamais tourné :
+  ils tourneront au premier tag sur Gabfranck/calmdev.
 - Sur l'arbre exporté (`scripts/public-export.mjs HEAD`, 506 fichiers), le scan `--fixtures` avec les `traceWords` passe
   et la suite sous `CI=true` passe : 950 tests, 0 échec, 5 sautés, 2 en attente (le patch des garde-fous). Pour y
   arriver : les tests de fichiers qui restent privés ne partent pas (`payments`, `site-public`, `capacites`),

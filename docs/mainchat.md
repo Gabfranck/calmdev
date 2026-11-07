@@ -107,7 +107,7 @@ on importe ce qui existe ; **un second import ajoute la suite** (les nouvelles l
 réponse complétée), sans rien doubler. Depuis la page : « Importer une conversation Claude Code », puis
 « Importer » sur la ligne du fichier, autant de fois qu'on veut.
 
-Les conversations de la nuit dans `~/.claude/projects/-Users-gab-Dev-escadrille/` s'importent dans l'ordre
+Les conversations de la nuit dans `~/.claude/projects/-Users-dev-Dev-escadrille/` s'importent dans l'ordre
 de leurs dates. La nuit du 31 octobre (`dfd196af-…`) n'a plus de `.jsonl` : seul son dossier
 (`subagents/`, `tool-results/`) reste ; son récit est `docs/recap-session-2026-11-01.md`.
 

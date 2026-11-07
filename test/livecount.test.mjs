@@ -48,7 +48,7 @@ test('the markup: the figures on the button, every session a link with its line,
 
 test('nothing runs: the counter says so and opens nothing', () => {
   const L = load();
-  assert.deepEqual(JSON.parse(JSON.stringify(L.group({ ours: [] }, {}))), { n: 0, cost: 0, projects: [], apps: [], vitals: null });
+  assert.deepEqual(JSON.parse(JSON.stringify(L.group({ ours: [] }, {}))), { n: 0, cost: 0, projects: [], apps: [], vitals: null, canStop: false });
   assert.equal(L.group(null).n, 0);
   assert.match(L.markup(L.group({ ours: [] })), /class="live-count idle"[^>]*disabled>live\.idle</);
 });
@@ -65,10 +65,56 @@ test('the front apps: one link per URL, opened in a new tab, from npm run dev, t
   assert.deepEqual(JSON.parse(JSON.stringify(m.apps)).map((a) => [a.host, a.name]), [['localhost:8080', 'orchard'], ['localhost:3050', 'orchard'], ['localhost:5173', 'escadrille'], ['localhost:3091', 'voir-VIT']]);
   const html = L.markup(m, true);
   assert.equal((html.match(/class="lc-s lc-app" href="http:\/\/localhost:\d+" target="_blank" rel="noopener"/g) || []).length, 4);
-  assert.match(html.replace(/&quot;/g, '"'), /live\.apps:\{"n":4\}/); // in the button's label
+  // the label counts what calmdev started: the two environments and the dev server; the Mac's `node` listener is folded apart (PROC)
+  assert.match(html.replace(/&quot;/g, '"'), /live\.apps:\{"n":3\}/); // in the button's label
+  assert.match(html, /lc-macs/);
   // no session, apps only: the counter still opens on them
   const only = L.markup(L.group({ ours: [], servers: withApps.servers }), true);
-  assert.doesNotMatch(only, /disabled/); assert.match(only, /<b class="num">2<\/b>/);
+  assert.doesNotMatch(only, /disabled/); assert.match(only, /lc-macs/); // two Mac services: listed folded, not counted
+});
+
+// docs/sessions.md 2026-11-07: an orphan comes with role 'env' (its project's root) and orphan: true; it must not read
+// « environnement · main » any more (7 November: five such lines, abandoned for days)
+const H = ['', 'Users', 'dev'].join('/'); // a home folder, built so no tracked file carries one (test/trace-scan.test.mjs)
+const since = new Date(Date.now() - 3 * 86400000).toISOString();
+const withOrphans = { ours: [], servers: [
+  { pid: 9, command: 'node', port: 3091, url: 'http://localhost:3091', cwd: '/w/voir-VIT', role: 'test', orphan: false },
+  { pid: 41, port: 3150, command: `node ${H}/Dev/CalmDev/scratch/serve.mjs --port 3150`, cwd: `${H}/Dev/CalmDev/scratch`, since, role: 'env', project: `${H}/Dev/CalmDev`, branch: 'main', orphan: true },
+  { pid: 12, port: 8080, url: 'http://localhost:8080', command: 'node', cwd: `${H}/Dev/CalmDev`, role: 'env', project: `${H}/Dev/CalmDev`, branch: 'main', orphan: false },
+] };
+
+test('an orphan reads apart: its folder, the word orphelin, its port; out of the Environnement and the tests', () => {
+  const L = load(); const m = L.group(withOrphans, {}, { canStop: true });
+  const A = JSON.parse(JSON.stringify(m.apps));
+  assert.deepEqual(A.map((a) => [a.role, a.name]), [['orphan', 'scratch'], ['env', 'CalmDev'], ['test', 'voir-VIT']]);
+  assert.deepEqual([A[0].pid, A[0].port, A[0].cwd], [41, 3150, `${H}/Dev/CalmDev/scratch`]);
+  const html = L.markup(m, true);
+  assert.match(html, /<div class="lc-proj lc-ohead"><span>live\.orphHead<\/span><span class="num">1<\/span><\/div>/);
+  assert.match(html, /<span class="t">scratch<\/span><span class="lc-otag">live\.orphTag<\/span><span class="num">:3150<\/span>/); // a word, not a colour only
+  assert.equal((html.match(/data-orph-stop=/g) || []).length, 1); // one action per orphan line
+  assert.equal((html.match(/live\.appBranch/g) || []).length, 1); // only the real environment says « environnement · main »
+  // the detail: folded, one line (the command, since when), then the full command, the date on hover and focus, the folder in ~/
+  assert.match(html, /<details class="lc-od" data-orph-detail="41:3150"><summary[^>]*>node serve\.mjs --port · live\.orphSince/);
+  assert.ok(html.includes(`<dd class="cmd">node ${H}/Dev/CalmDev/scratch/serve.mjs --port 3150</dd>`));
+  assert.match(html, /<span class="lc-when" tabindex="0"[^>]*aria-describedby="lco-41-3150-d">time\.forD:\{&quot;n&quot;:3\}<span class="lc-tip" role="tooltip" id="lco-41-3150-d">/);
+  assert.match(html, /<dd class="dir">~\/<wbr>Dev\/<wbr>CalmDev\/<wbr>scratch<\/dd>/); // ~/ for the home, a break only after a « / »
+});
+
+test('without the Mac (a phone, a poste), no « Arrêter » is drawn at all; a line that is no orphan is unchanged', () => {
+  const L = load(); const html = L.markup(L.group(withOrphans, {}, { canStop: false }), true);
+  assert.doesNotMatch(html, /data-orph-stop|lc-ostop/);
+  assert.match(html, /lc-otag/);
+  const plain = { ours: [], servers: withOrphans.servers.filter((s) => !s.orphan).map(({ orphan, ...s }) => s) };
+  assert.equal(L.markup(L.group({ ...plain, servers: withOrphans.servers.filter((s) => !s.orphan) }), true), L.markup(L.group(plain), true));
+});
+
+test('a refusal reads in one line: gone, owned, the 403 sentence of the server', () => {
+  const L = load();
+  assert.equal(L.why(409, 'not listening'), 'live.orphGone');
+  assert.equal(L.why(409, 'owned by ENV: up'), 'live.orphEnv');
+  assert.equal(L.why(409, 'owned by p/A'), 'live.orphOwned:{"by":"p/A"}');
+  assert.equal(L.why(403, 'Arrêter un orphelin… utilise le bouton Arrêter'), 'Arrêter un orphelin… utilise le bouton Arrêter');
+  assert.equal(L.why(0, ''), 'live.orphFail');
 });
 
 test('the vital signs: one folded line, memory over 85 % marked, the detail in the fold', () => {

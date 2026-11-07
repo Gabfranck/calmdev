@@ -163,3 +163,11 @@ secret » se déclenchait sur sa propre ligne (le littéral `github_pat_`) ; cor
 
 Note pour qui lance les vérifications : dans le bac à sable de Claude Code, Node ne peut lancer aucun
 processus (`spawn EPERM`) ; `run: true` et les tests qui lancent des processus tournent hors bac à sable.
+
+## Avant de signer (`pistes`)
+
+La sortie gagne `pistes`, `asks`, `counts` et `declare` (`lib/signing.mjs`, docs/apprendre-en-signant.md).
+`counts` ({ open, folded, foldedReliable, fragile, outside: [clés de domaine] }) : la page écrit les trois lignes
+dans sa langue (clés `sign.*` de public/i18n), jamais la pré-revue. Options : `profile` ({ domains, known }, sinon lu dans `~/.config/calmdev/signing.json`,
+`CALMDEV_SIGNING` pour un autre fichier, `signingFile: false` pour ne rien lire), `assume` (sinon lu dans
+`.calmdev/assume.json` du dépôt), `branch` (cité dans la question au pair). Tests : `test/signing.test.mjs`.

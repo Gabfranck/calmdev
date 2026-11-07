@@ -5,8 +5,9 @@
 #   ./install.sh --no-open   check and start, without opening the page
 #   ./install.sh --check     check only (exit 1 if something is missing)
 #   ./install.sh --lan       passed to ./run.sh (opens the LAN, for the phone)
-#   ./install.sh --tab       open a tab of the default browser instead of the app window
-# The page opens in its own window (scripts/open-app.sh); ./run.sh --open reopens it later.
+#   ./install.sh --tab       open a tab of the default browser even when the Mac app is installed
+# The Mac app opens when installed (/Applications/calmdev.app, docs/desktop.md), else the default browser
+# (scripts/open-app.sh); ./run.sh --open reopens it later.
 # Run from a project folder (cd ~/Dev/my-app && ~/escadrille/install.sh), that folder becomes one of calmdev's
 # projects (lib/projects.mjs, ~/.config/escadrille/projects.json); run from this clone, nothing is added.
 LAUNCHED_FROM="$(pwd -P)"
@@ -20,7 +21,7 @@ for a in "$@"; do
     --no-open) OPEN=0 ;;
     --tab) TAB=1 ;;
     --lan) RUN_ARGS="--lan" ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) echo "unknown option: $a (--check, --no-open, --tab, --lan)" >&2; exit 2 ;;
   esac
 done

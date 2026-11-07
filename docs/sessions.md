@@ -796,3 +796,7 @@ lus, 954 écrits, 0,096 $. Les tests : `node --test 'test/*.test.mjs'` (le pilot
   progression (jeu), la pré-revue, la liste des modèles, une doc rendue (`/docs/flot.md`).
 - Risque laissé : `node_modules` du checkout est lié dans le worktree et ouvert en écriture ; une session peut modifier les dépendances que le checkout exécutera.
 - Les tests de fusion (`testCommand`) tournent hors bac à sable : jamais sans le clic « Lancer les tests » dans À faire.
+
+## Résumé du pilote (7 nov.)
+
+`GET /api/pilot/brief?project=<chemin>` : une ligne par session vivante (processus en cours, non fusionnée) : `plan/session · état · dernier arrêt (120 car.) · autorisation en attente · coût/budget`, puis `À toi : n`. `Accept: application/json` rend `{ project, sessions, count }`. Calculé depuis `flowNow` et `asksNow`, sans requête de plus (`lib/pilotbrief.mjs`). Lecture seule, mêmes droits que `/api/running` : LAN sans jeton → 401, appareil appairé → 403.

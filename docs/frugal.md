@@ -112,7 +112,7 @@ d'« après ». Méthode, pour F ou Dev, une fois qu'elle a posé ses questions 
 1. Son `session_id`, en lecture seule :
    `node -e 'const {DatabaseSync}=require("node:sqlite");const db=new DatabaseSync("sessions.sqlite",{readOnly:true});console.log(db.prepare("select id,session_id from escadrilles where title like ?").get("Phase 5%"))'`
 2. Le compte du premier tour (usage compté une fois par `message.id`, jusqu'au deuxième prompt) et
-   la liste des `Read` : `node lib/frugal.mjs ~/.claude/projects/-Users-gab-Dev-escadrille/<session_id>.jsonl`
+   la liste des `Read` : `node lib/frugal.mjs ~/.claude/projects/-Users-dev-Dev-escadrille/<session_id>.jsonl`
 3. Le coût : `usage` de l'escadrille dans la même table, ou les tokens × les prix de `lib/usage.mjs`
    (Fable : 10 $ / M en entrée, 50 $ / M en sortie, cache lu ×0,25… voir `PRICES`).
 4. Remplir la ligne ci-dessous.
@@ -288,7 +288,7 @@ fois, ou une seule.
 
 `scripts/measure-rafale.mjs` rejoue sur le papier, en lecture seule (base ouverte `readOnly`) :
 
-- A. les conversations Claude Code de Dev dans `~/.claude/projects/-Users-gab-Dev-escadrille/`
+- A. les conversations Claude Code de Dev dans `~/.claude/projects/-Users-dev-Dev-escadrille/`
   (entrypoint `cli`) du 1er et du 2 novembre : un tour va d'un message de Dev à la réponse dont le
   `stop_reason` le ferme ; un message écrit pendant un tour est en rafale ; un par un il coûte un tour,
   groupés tous ceux d'un même tour en font un. Tokens évités : contexte médian du premier appel d'un tour ×

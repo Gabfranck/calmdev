@@ -75,7 +75,7 @@
       api('/api/bursts?project=' + q(project)), api('/api/project/settings?project=' + q(project)),
     ].map((p) => p.catch((e) => ({ error: e.message }))));
     S.horizon = horizon; S.backlog = backlog; S.bursts = bursts.bursts || []; S.settings = settings; S.loaded = true;
-    if (!S.picked && backlog.tasks) S.picked = new Set(backlog.tasks.filter((t) => !t.done).map((t) => t.n));
+    if (!S.picked && backlog.tasks) { const open = backlog.tasks.filter((t) => !t.done); const num = open.filter((t) => t.pick); S.picked = new Set((num.length ? num : open).map((t) => t.n)); }
     S.current = S.bursts[0] || null;
     const nav = document.getElementById('navBurst');
     if (nav) { nav.hidden = !S.bursts.length; nav.href = '/?project=' + q(project) + '#rafale'; nav.setAttribute('aria-current', location.hash === '#rafale' ? 'page' : 'false'); } // i18n-ok

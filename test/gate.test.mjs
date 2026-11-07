@@ -30,8 +30,12 @@ test('classify: the table, first match wins, the defaults', () => {
   assert.equal(gate.classify('POST', '/api/launch').gesture, 'launch');
   assert.deepEqual(gate.classify('POST', '/api/plan/p/session/s/reviewed').opens, ['cookie'], 'the browser alone approves a guardrail');
   assert.deepEqual(gate.classify('POST', '/api/plan/p/session/s/terminal').opens, ['cookie', 'pilot'], 'what the Studio keeps: no device');
+  const unit = gate.classify('POST', '/api/unit'); assert.equal(unit.gesture, 'settings');
+  assert.deepEqual(unit.opens, ['cookie', 'device'], 'a price is the developer\'s setting: the cookie and a paired device, never the pilot');
+  assert.equal(gate.opened(unit, { pilot: true }), false); assert.equal(gate.opened(unit, { device: true }), true); assert.equal(gate.opened(unit, { cookie: true }), true);
   assert.equal(gate.classify('POST', '/api/memory').kind, 'session');
   assert.equal(gate.classify('GET', '/api/memory').kind, 'read');
+  assert.equal(gate.classify('POST', '/api/policy/check').kind, 'read', 'POL: a check changes nothing, open to every local caller');
   assert.equal(gate.classify('GET', '/api/plans').kind, 'read'); assert.equal(gate.classify('POST', '/api/plans').kind, 'read', 'a read that takes any verb');
   assert.equal(gate.classify('GET', '/').kind, 'read'); assert.equal(gate.classify('GET', '/plan/x').kind, 'read'); assert.equal(gate.classify('get', '/api/events/').kind, 'read');
   assert.equal(gate.classify('POST', '/api/pair').kind, 'open'); assert.equal(gate.classify('POST', '/api/phone/forget').kind, 'device');
@@ -167,6 +171,16 @@ test('the pilot\'s token opens the act routes, never the approval of a guardrail
   assert.equal((await post('/api/limits', {}, H)).status, 400); assert.equal((await post('/api/pilot', { project: '/nope', external: true }, H)).status, 400);
   const rv = await post('/api/plan/x/session/y/reviewed', {}, H); assert.equal(rv.status, 403); assert.match(rv.body.error, /guard-link/); assert.deepEqual(rv.body.gate.opens, ['cookie']);
   assert.equal((await post('/api/plan/x/session/y/terminal', {}, H)).status, 404, 'what the Studio keeps: the pilot passes, a device would not');
+});
+
+test('POST /api/policy/check: open without proof (it changes nothing), the same answer shape with the pilot\'s token', async () => {
+  assert.equal(gate.classify('POST', '/api/policy/check').kind, 'read');
+  const outside = tmp('escadrille-gate-mac-');
+  const r = await post('/api/policy/check', { cwd: outside, tool: 'Read', input: { file_path: path.join(outside, 'a.txt') } });
+  assert.equal(r.status, 200, r.text); assert.equal(r.body.decision, 'allow'); assert.equal(r.body.target.kind, 'mac');
+  const push = await post('/api/policy/check', { cwd: outside, tool: 'Bash', input: { command: 'git push origin dev' } }, { 'x-escadrille-pilot': PILOT });
+  assert.equal(push.status, 200); assert.equal(push.body.decision, 'deny', 'no pilot-push file: no push, even for the pilot'); assert.ok(push.body.path, 'the way that works');
+  assert.equal((await post('/api/policy/check', {})).body.decision, 'ask', 'a bad call asks, never refuses');
 });
 
 test('a paired device: its Bearer opens its routes from the Mac too; the LAN guard is unchanged', async () => {

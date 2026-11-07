@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtempSync, writeFileSync, chmodSync, realpathSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, chmodSync, realpathSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { SANDBOX_SETTINGS, sandboxSettingsFor, sandboxSettings, sandboxStatus, startSession } from '../lib/planner.mjs';
@@ -96,8 +96,14 @@ test('pickTerminal on macOS: SM_TERMINAL, else Ghostty if installed, else Termin
   assert.equal(mac({}, false).argv('/p', 'claude').file, 'osascript');
 });
 
-// install.sh with a PATH of fakes: /bin and /usr/bin for sed, cut, uname…, a fake folder first
-const install = (args, bin) => new Promise((resolve) => execFile('/bin/sh', [path.join(ROOT, 'install.sh'), ...args], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: tmpdir() } },
+// install.sh with a PATH of fakes, then only the system tools it uses (sed, cut, git…), each a wrapper: never /usr/bin
+// whole, where a runner has bwrap (ubuntu-latest does) and the "bwrap not found" line would not come.
+const SYSTEM_TOOLS = ['dirname', 'sed', 'cut', 'head', 'grep', 'git', 'uname'];
+const systemTools = fakeBin(Object.fromEntries(SYSTEM_TOOLS.flatMap((n) => {
+  const real = ['/usr/bin', '/bin'].map((d) => path.join(d, n)).find((f) => existsSync(f));
+  return real ? [[n, `exec ${real} "$@"`]] : [];
+})));
+const install = (args, bin) => new Promise((resolve) => execFile('/bin/sh', [path.join(ROOT, 'install.sh'), ...args], { env: { PATH: `${bin}:${systemTools}`, HOME: tmpdir() } },
   (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr })));
 
 test('install.sh --check: an old node and no claude fail, each with what to do', async () => {
@@ -115,6 +121,9 @@ test('install.sh --check: node 22.12 is too old, 22.13 and claude pass; on Linux
   assert.equal(linux.code, 0, linux.out);
   assert.match(linux.out, /ok {4}node 22\.13\.0/); assert.match(linux.out, /ok {4}claude 2\.1\.316/);
   assert.match(linux.out, /warn {2}bwrap not found/); assert.match(linux.out, /ok {4}socat/); assert.match(linux.out, /All set/);
+  // A bwrap on the PATH (the fake one here, a runner's real one) is found: the warning above comes only from its absence
+  const withBwrap = await install(['--check'], fakeBin({ node: 'echo v22.13.0', claude: 'echo 2.1.316', uname: 'echo Linux', socat: 'exit 0', bwrap: 'exit 0' }));
+  assert.match(withBwrap.out, /ok {4}bwrap/); assert.doesNotMatch(withBwrap.out, /bwrap not found/);
   const mac = await install(['--check'], fakeBin({ node: 'echo v24.1.0', claude: 'echo 2.1.316', uname: 'echo Darwin' }));
   assert.equal(mac.code, 0); assert.doesNotMatch(mac.out, /bwrap/);
   assert.equal((await install(['--bogus'], fakeBin({}))).code, 2);

@@ -53,7 +53,7 @@ for (const p of plans) up.run(p.id, p.title, p.created, JSON.stringify(p), carne
 db.prepare('delete from sessions where plan in (' + plans.map(() => '?').join(',') + ')').run(...plans.map((p) => p.id));
 db.prepare('delete from log where plan in (' + plans.map(() => '?').join(',') + ')').run(...plans.map((p) => p.id));
 db.prepare('delete from session_messages where plan in (' + plans.map(() => '?').join(',') + ')').run(...plans.map((p) => p.id));
-const ins = db.prepare('insert into sessions (plan, id, status, stops, health, why, claude, note, name, at, worktree, usage, pending, summary) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+const ins = db.prepare("insert into sessions (plan, id, status, stops, health, why, claude, note, name, at, worktree, usage, pending, summary, mode) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'page')");
 const log = db.prepare('insert into log (plan, session, at, status, stops, health, why, claude, name) values (?, ?, ?, ?, ?, ?, ?, ?, ?)');
 const act = db.prepare("insert into session_messages (plan, session, role, text, at) values (?, ?, 'activity', ?, ?)");
 const row = (plan, id, name, { status, stops = [], health = 'ok', why = '', claude = '', at = ago(0.2), merged = null, cost = null, context = null, pending = [], summary = null, startedH = null, now = null }) => {

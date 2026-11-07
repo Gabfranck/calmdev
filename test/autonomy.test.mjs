@@ -27,11 +27,13 @@ after(() => { for (const s of servers) s.kill('SIGKILL'); });
 
 const boot = (turns) => {
   const PORT = freePort(); const base = `http://127.0.0.1:${PORT}`;
-  const S = { fake: fakeClaude(), plans: tmp('escadrille-plans-'), db: path.join(tmp('escadrille-db-'), 'db.sqlite'), empty: tmp('escadrille-none-') };
-  S.proc = spawn(process.execPath, ['--no-warnings', path.join(HERE, '..', 'server.mjs')], { env: { ...testEnv(), ESCADRILLE_GATE: 'off', PORT: String(PORT), ESCADRILLE_DB: S.db, ESCADRILLE_PLANS: S.plans, ESCADRILLE_CLAUDE: S.fake.file, ESCADRILLE_TRANSCRIPTS: S.empty, ESCADRILLE_SESSIONS: S.empty, ESCADRILLE_FALLBACK_MIN: '0', ESCADRILLE_TESTBOX: 'none', FAKE_CLAUDE_TURNS: JSON.stringify(turns) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const S = { fake: fakeClaude(), plans: tmp('escadrille-plans-'), db: path.join(tmp('escadrille-db-'), 'db.sqlite'), empty: tmp('escadrille-none-'), keys: tmp('escadrille-keys-') };
+  S.proc = spawn(process.execPath, ['--no-warnings', path.join(HERE, '..', 'server.mjs')], { env: { ...testEnv(), ESCADRILLE_GATE: 'off', ESCADRILLE_GUARD_DIR: S.keys, PORT: String(PORT), ESCADRILLE_DB: S.db, ESCADRILLE_PLANS: S.plans, ESCADRILLE_CLAUDE: S.fake.file, ESCADRILLE_TRANSCRIPTS: S.empty, ESCADRILLE_SESSIONS: S.empty, ESCADRILLE_FALLBACK_MIN: '0', ESCADRILLE_TESTBOX: 'none', FAKE_CLAUDE_TURNS: JSON.stringify(turns) }, stdio: ['ignore', 'pipe', 'pipe'] });
   servers.push(S.proc); S.err = ''; S.proc.stderr.on('data', (d) => { S.err += d; });
   S.get = async (p) => (await fetch(base + p)).json();
-  S.post = async (p, body) => { const r = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); return { status: r.status, body: await r.json() }; };
+  S.post = async (p, body, headers = {}) => { const r = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body || {}) }); return { status: r.status, body: await r.json() }; };
+  // the browser's key: the link of guard-link hands it as a cookie (every agreement « à relire » asks it)
+  S.cookie = async () => { const k = new URL(readFileSync(path.join(S.keys, 'guard-link'), 'utf8').trim()).searchParams.get('k'); const r = await fetch(base + '/guard?k=' + k, { redirect: 'manual' }); return r.headers.get('set-cookie').split(';')[0]; };
   S.ready = () => until(async () => { try { await S.get('/api/plans'); return true; } catch { return false; } });
   S.session = async (plan, id) => (await S.get(`/api/plan/${plan}`)).state.find((s) => s.id === id);
   S.messages = async (plan, id) => (await S.get(`/api/plan/${plan}/session/${id}/messages`)).messages;
@@ -78,6 +80,9 @@ test('waitsForHuman for the three modes and the six kinds; decidePermission; the
   assert.match(plain(A.quotaRefusal(1, new Date(Date.now() + 864e5).toISOString())), /Quota hebdo à 100 %/);
   assert.equal(A.quotaRefusal(1, new Date(Date.now() - 1000).toISOString()), null, 'the reset passed');
   assert.equal(A.quotaRefusal(0.8, null), null);
+  const tomorrow = new Date(Date.now() + 864e5).toISOString();
+  assert.equal(A.quotaRefusal(1, tomorrow, Date.now(), { overage: { status: 'allowed', using: true } }), null, 'extra usage allowed: Anthropic limits, not Escadrille');
+  assert.match(plain(A.quotaRefusal(1, tomorrow, Date.now(), { overage: { status: 'rejected' } })), /Quota hebdo à 100 %/, 'extra usage refused: the stop holds');
   assert.equal(plain(A.summaryLine({ ...A.DEFAULTS, mode: 'guide' })), 'Guidé · 3 domaines sous garde · fusion auto éteinte');
 });
 
@@ -134,11 +139,11 @@ test('a diff under .github/ holds the merge and the next wave until reviewed; de
   const a = await until(async () => { const s = await S.session('garde', 'A'); return s.review ? s : null; });
   assert.deepEqual(a.review.files, ['.github/workflows/ci.yml']); assert.equal(a.review.seen, false);
   assert.ok(a.pending.some((x) => x.kind === 'review' && x.files.includes('.github/workflows/ci.yml')));
-  const r = await S.post('/api/plan/garde/session/A/merge'); assert.equal(r.status, 400); assert.match(r.body.error, /à relire : \.github\/workflows\/ci\.yml/);
+  const r = await S.post('/api/plan/garde/session/A/merge'); assert.equal(r.status, 400); assert.match(r.body.error, /à relire avant la fusion : \.github\/workflows\/ci\.yml\..*\/plan\/garde/i);
   const b = await until(async () => { const s = await S.session('garde', 'B'); return s.queued ? s : null; });
   assert.equal(b.status, 'todo'); assert.match(b.claude, /À relire d’abord : A/);
   const d = await S.get('/api/plan/garde/session/A/diff'); assert.ok(d.files.includes('.github/workflows/ci.yml')); assert.match(d.patch, /ci\.yml/);
-  assert.deepEqual((await S.post('/api/plan/garde/session/A/reviewed')).body, { ok: true });
+  assert.deepEqual((await S.post('/api/plan/garde/session/A/reviewed', { head: d.head }, { cookie: await S.cookie() })).body, { ok: true });
   await until(async () => ['running', 'waiting', 'done'].includes((await S.session('garde', 'B')).status));
   assert.equal((await S.session('garde', 'A')).worktree.merged, false, 'kit: delivered, not merged');
   const m = (await S.post('/api/plan/garde/session/A/merge')).body;

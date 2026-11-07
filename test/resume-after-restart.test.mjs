@@ -18,7 +18,7 @@ const sh = (cwd, args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pi
 const until = async (fn, ms = 40000) => { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) throw new Error('timeout: ' + fn.toString().slice(0, 140)); await new Promise((r) => setTimeout(r, 100)); } };
 const procs = []; after(() => { for (const p of procs) p.kill('SIGKILL'); });
 
-const RESUME_TEXT = 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc escadrille:state.';
+const RESUME_TEXT = 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc calmdev:state.';
 // every process of the fake plays this turn first: it holds 5 s, long enough for the kill to fall in the middle of it
 const TURNS = [{ hold: 5000, stops: [0], claude: 'Tour fini', prose: 'Le tour est fait.' }, { stops: [0, 1], claude: 'Fini', done: true }];
 

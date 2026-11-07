@@ -52,9 +52,9 @@ test('livecount splits Environnement and folded test apps, the count is the list
   assert.match(html, /environnement · dev/);
   assert.match(html, /<details class="lc-tests"><summary><span>20 apps de test<\/span>/, 'folded by default');
   assert.equal((html.match(/class="lc-s lc-app"/g) || []).length, m.apps.length, 'every counted app is a row of the list');
-  assert.match(html, /<b class="num">21<\/b>/);
+  assert.match(html, /<b class="num">20<\/b>/, 'the project\'s own server found in its folder is not counted: calmdev did not start it');
   // 53 stop: the same answer feeds the count and the list at once
   const after = L.group({ ...running, servers: running.servers.slice(0, 1), ours: [] }, {});
   const h2 = L.markup(after, true);
-  assert.match(h2, /<b class="num">1<\/b>/); assert.doesNotMatch(h2, /lc-tests/);
+  assert.match(h2, /Environnement<\/span><span class="num">1</); assert.doesNotMatch(h2, /lc-tests/);
 });

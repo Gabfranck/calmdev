@@ -21,8 +21,8 @@ test('the real docs/backlog.md: every line and section survives a read, a check 
   const d = bl.parseDoc(REAL);
   // the sizes are the private backlog's (public-manifest.json never leaves); the public one is a short rewrite
   if (existsSync(path.join(HERE, '..', 'public-manifest.json'))) {
-    assert.ok(d.items.filter((x) => !x.done).length > 100); assert.ok(d.sections.length > 10);
-    assert.ok(d.items.some((x) => x.link?.startsWith('plans/retired/')));
+    // sorted on 7 Nov. into Prêt, À planifier, Bloqué, Retiré, Fait (the retired-plan headings folded in)
+    assert.ok(d.items.filter((x) => !x.done).length > 50); assert.ok(d.sections.length >= 5);
   } else assert.ok(Array.isArray(d.items)); // the public backlog may hold no line at all
   for (const it of d.items.slice(0, 40)) assert.equal(bl.toggle(bl.toggle(REAL, it.line, it.md), it.line, bl.parseDoc(bl.toggle(REAL, it.line, it.md)).items.find((x) => x.line === it.line).md), REAL);
   for (const it of d.items.filter((x) => !x.done).slice(0, 30)) { const down = bl.move(REAL, it.line, 'down', it.md); assert.equal(down.split('\n').length, REAL.split('\n').length); assert.deepEqual([...down.split('\n')].sort(), [...REAL.split('\n')].sort()); }

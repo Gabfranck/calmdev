@@ -14,8 +14,13 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_updater::UpdaterExt;
 
 const DEFAULTS: &str = include_str!("../calmdev.json");
+/// The value of plugins.updater.pubkey in tauri.conf.json until the developer has generated the update key
+/// (docs/desktop.md, « Publier une version »). While it is there, the app never looks for an update.
+const UPDATER_PLACEHOLDER: &str = "PLACEHOLDER_UPDATER_PUBLIC_KEY";
 const LOCAL_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "[::1]"];
 
 /// The server this app started, if any: the only one it stops.
@@ -63,6 +68,25 @@ fn settings(app: &AppHandle) -> Settings {
 
 fn server_url(port: u16) -> String {
     format!("http://localhost:{port}")
+}
+
+/// The first page: the guard link the server wrote (docs/gate.md), so the window gets the guard cookie and can act;
+/// without it, the plain address (every action would answer 403). Same folder as lib/gate.mjs: CALMDEV_GUARD_DIR,
+/// ESCADRILLE_GUARD_DIR, ~/.config/calmdev, then the old ~/.config/escadrille. The key is never logged.
+fn first_url(port: u16) -> String {
+    let base = server_url(port);
+    let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+    let dirs: Vec<PathBuf> = ["CALMDEV_GUARD_DIR", "ESCADRILLE_GUARD_DIR"]
+        .iter()
+        .filter_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()).map(PathBuf::from))
+        .chain([home.join(".config/calmdev"), home.join(".config/escadrille")])
+        .collect();
+    let prefix = format!("{base}/guard?k=");
+    dirs.iter()
+        .filter_map(|d| fs::read_to_string(d.join("guard-link")).ok())
+        .filter_map(|t| t.lines().next().map(|l| l.trim().to_owned()))
+        .find(|l| l.starts_with(&prefix) && l.len() > prefix.len())
+        .unwrap_or(base)
 }
 
 fn answers(port: u16) -> bool {
@@ -114,6 +138,53 @@ fn fail(window: &WebviewWindow, detail: &str) {
     let _ = window.eval(&js);
 }
 
+/// True once tauri.conf.json carries a real public key: the updater plugin then checks the minisign signature of
+/// every update with it. With the placeholder (or nothing), no check is made and the plugin is not even loaded.
+fn updater_enabled(app: &AppHandle) -> bool {
+    app.config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|c| c.get("pubkey"))
+        .and_then(|k| k.as_str())
+        .map(str::trim)
+        .is_some_and(|k| !k.is_empty() && !k.starts_with(UPDATER_PLACEHOLDER))
+}
+
+/// In the background, after the page is open: asks the release endpoint for a newer version and, if there is one,
+/// shows a native « Mettre à jour / Plus tard » box. « Mettre à jour » downloads, verifies, installs and relaunches.
+/// A failed check (offline, no release yet) is logged and otherwise ignored.
+fn check_for_update(app: &AppHandle) {
+    if !updater_enabled(app) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = offer_update(&app).await {
+            eprintln!("calmdev: update check failed: {e}");
+        }
+    });
+}
+
+async fn offer_update(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(update) = app.updater()?.check().await? else { return Ok(()) };
+    let ask = app
+        .dialog()
+        .message(format!(
+            "calmdev {} est disponible (version installée : {}).",
+            update.version, update.current_version
+        ))
+        .title("Mise à jour de calmdev")
+        .buttons(MessageDialogButtons::OkCancelCustom("Mettre à jour".into(), "Plus tard".into()));
+    // the box blocks its thread until the answer: never the main thread, never the async executor
+    if !tauri::async_runtime::spawn_blocking(move || ask.blocking_show()).await? {
+        return Ok(());
+    }
+    update.download_and_install(|_, _| {}, || {}).await?;
+    stop(app);
+    app.restart()
+}
+
 /// Waits for the server (starting it when nothing answers), then opens it in the window.
 fn boot(app: AppHandle, window: WebviewWindow) {
     let s = settings(&app);
@@ -151,10 +222,11 @@ fn boot(app: AppHandle, window: WebviewWindow) {
             thread::sleep(Duration::from_millis(250));
         }
     }
-    match server_url(s.port).parse::<Url>() {
+    match first_url(s.port).parse::<Url>() {
         Ok(url) => {
-            if let Err(e) = window.navigate(url) {
-                fail(&window, &format!("La page ne s’ouvre pas ({e}) : ouvrez {} dans un navigateur.", server_url(s.port)));
+            match window.navigate(url) {
+                Ok(()) => check_for_update(&app),
+                Err(e) => fail(&window, &format!("La page ne s’ouvre pas ({e}) : ouvrez {} dans un navigateur.", server_url(s.port))),
             }
         }
         Err(e) => fail(&window, &format!("Adresse invalide ({e}) : vérifiez « port » dans `{}`.", s.config_file.display())),
@@ -183,6 +255,10 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(Server(Mutex::new(None)))
         .setup(|app| {
+            if updater_enabled(app.handle()) {
+                app.handle().plugin(tauri_plugin_dialog::init())?;
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
             let conf = app
                 .config()
                 .app

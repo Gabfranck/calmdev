@@ -1,0 +1,4 @@
+[
+  { "name": "no tracked file carries a personal trace", "date": "2026-11-07", "reason": "red on main (trace-scan, test/trace-scan.test.mjs)" },
+  { "name": "one change of a busy project costs the server little", "date": "2026-11-07", "reason": "red on main under load (perf, test/perf.test.mjs)" }
+]

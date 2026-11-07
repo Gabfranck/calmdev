@@ -12,6 +12,9 @@ import * as suggest from '../lib/suggest.mjs';
 import * as i18n from '../lib/i18n.mjs';
 import { seed } from './seed-suggest.mjs';
 
+// a bare `node --test` takes every .mjs under test/ for a test file: this bench is none, it serves nothing there
+if (process.env.NODE_TEST_CONTEXT) process.exit(0);
+
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const DB = path.resolve(process.env.ESCADRILLE_DB || path.join(ROOT, '.escadrille', 'seed', 'suggest.sqlite'));
 await mkdir(path.dirname(DB), { recursive: true });

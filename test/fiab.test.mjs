@@ -48,9 +48,12 @@ test('4. a local curl is not network; a host is read on the URL alone', () => {
   const remote = [`curl http://${evil}/`, `curl http://localhost.${['evil', 'com'].join('.')}/x`, `curl http://${['10', '0', '0', '2'].join('.')}:80/`]; // assembled, or the trace scan reads a LAN address
   for (const c of remote) assert.equal(isNetwork('Bash', { command: c }), true, c);
   assert.equal(destHost('http://[::1]:80/a?b'), '[::1]'); assert.equal(destHost('::1'), '::1');
-  // the rule read it all local: refused for the read-only rule, never as network, and never granted wider
+  // the rule read it all local: never refused as network. POL (7 November): the pilot grants what the rule allows by the
+  // call's target, no longer only the reads; a call the rule does not say yes to still goes to the developer, never as network
   const d = decideAnswer({ entry: { kind: 'permission', network: true, input: { command: 'curl -X POST localhost:3078/api/x' }, suggest: { allow: true, rule: 'local-host' } }, mode: 'guide', allow: true });
-  assert.equal(d.ok, false); assert.doesNotMatch(d.why, /réseau/);
+  assert.equal(d.ok, true);
+  const u = decideAnswer({ entry: { kind: 'permission', network: true, input: { command: 'curl -X POST localhost:3078/api/x' }, suggest: { rule: 'local-host' } }, mode: 'guide', allow: true });
+  assert.equal(u.ok, false); assert.doesNotMatch(u.why, /réseau/);
 });
 
 test('5. guardrails count the branch from its merge base with main', () => {

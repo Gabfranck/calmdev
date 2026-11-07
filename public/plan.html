@@ -8,9 +8,7 @@
 <script src="/md.js"></script>
 <script src="/todo.js"></script>
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
-<script src="/app-window.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title data-i18n="plan.title"></title>
 <link rel="stylesheet" href="/app.css">
@@ -436,7 +434,8 @@ let seenPending = null;
 // (GET /api/status pilot.present), a reply, a permission or an ordinary review is the pilot's, in silence; a human stop
 // (taste, data, security, release) and a guard review always reach him
 let pilotPresent = false;
-const forDev = (w) => window.escadrilleTodo.needsDev({ kind: w.p.kind, pilot: pilotPresent, human: !!(w.p.kind === 'reply' && Number.isInteger(w.p.stop) && w.s.stops && w.s.stops[w.p.stop] && typeof w.s.stops[w.p.stop] === 'object' && ['taste', 'data', 'security', 'release'].includes(w.s.stops[w.p.stop].kind)), guard: !!(w.p.guard && w.p.guard.length) });
+// ATOI (Dev, 7 Nov.): who is awaited is nextStep's word (/api/plan state[].next), never the bare status or pending kind
+const forDev = (w) => (w.x && w.x.next && ['permission', 'reply', 'review', 'merge'].includes(w.p.kind)) ? w.x.next.who === 'dev' : window.escadrilleTodo.needsDev({ kind: w.p.kind, pilot: pilotPresent, human: !!(w.p.kind === 'reply' && Number.isInteger(w.p.stop) && w.s.stops && w.s.stops[w.p.stop] && typeof w.s.stops[w.p.stop] === 'object' && ['taste', 'data', 'security', 'release'].includes(w.s.stops[w.p.stop].kind)), guard: !!(w.p.guard && w.p.guard.length) });
 const maybeNotify = (all) => { const list = all.filter(forDev); const ids = list.map((w) => w.s.id + ':' + w.p.id); const fresh = seenPending ? list.filter((w, i) => !seenPending.has(ids[i])) : [];
   if (fresh.length && document.hidden && notifyOn()) { const w = fresh[0]; const n = new Notification(`${w.s.id} · ${w.s.name || ''}`, { body: w.p.kind === 'permission' ? T('plan.notifPerm', { s: w.s.id, verb: TOOL_VERB[w.p.tool] || T('plan.v.use'), text: w.p.text }) : w.p.kind === 'reply' ? T('plan.notifReply', { s: w.s.id }) : w.p.kind === 'alert' ? alertText(w.s, w.x, w.p) : String(w.p.text || ''), tag: ids[list.indexOf(w)] }); n.onclick = () => { window.focus(); n.close(); }; }
   seenPending = new Set(ids); };
@@ -665,7 +664,8 @@ document.addEventListener('click', async (e) => { const t = e.target.closest && 
   if (t.dataset.copyPath) { const p = t.dataset.copyPath; if (await copy(p)) { copiedPath = p; render(); setTimeout(() => { copiedPath = ''; render(); }, 2000); } return; }
   if (t.dataset.diff) { const sid = t.dataset.diff; if (diffOpen.has(sid) && diffs[sid]) diffOpen.delete(sid); else await loadDiff(sid); return render(); }
   if (t.dataset.reviewed) { const sid = t.dataset.reviewed;
-    if (t.dataset.guard && !diffs[sid]?.head) { delete notes['guard:' + sid]; const d = await loadDiff(sid); notes['guard:' + sid] = d.head ? T('plan.guardLookFirst') : (d.error || T('plan.error')); return render(); }
+    // every file « à relire » is agreed on the commit seen: the diff first, then the click (Dev, 7 novembre)
+    if (!diffs[sid]?.head) { delete notes['guard:' + sid]; const d = await loadDiff(sid); notes['guard:' + sid] = d.head ? T('plan.guardLookFirst') : (d.error || T('plan.error')); return render(); }
     const head = diffs[sid]?.head; const r = await sessionApi(sid, 'reviewed', head ? { head } : {}).catch((err) => ({ error: err.message })); notes['guard:' + sid] = r?.error || ''; if (r?.error) return render(); delete diffs[sid]; diffOpen.delete(sid); return load(); }
   if (t.dataset.runTests) { t.disabled = true; await sessionApi(t.dataset.runTests, 'run-tests', {}); return load(); }
   if (t.dataset.continueBudget) { await sessionApi(t.dataset.continueBudget, 'continue-budget', {}); return load(); }
@@ -713,7 +713,7 @@ const saveNetwork = async (list) => { data.plan.network = list; netNote = ''; re
 // The head every view shares (direction §6): the plan's name, the figures on one line (as the Flot), a problem named
 // at the end, the other plans and the JSON at the right, « À faire », then the four tabs
 const planSub = () => { const f = figures();
-  const waits = [...new Set(pendings().filter(asks).map((w) => w.s.id))]; // the sessions that wait for the developer, counted once each
+  const waits = [...new Set(pendings().filter((w) => asks(w) && forDev(w)).map((w) => w.s.id))]; // the sessions that wait for the developer, counted once each
   const problems = [...f.rows.filter((r) => r.x.health === 'error').map((r) => T('plan.inError', { s: r.s.id })), ...f.rows.filter((r) => r.x.health === 'drift').map((r) => T('plan.drifts', { s: r.s.id }))];
   const spent = f.rows.reduce((a, r) => a + ((r.x.usage && r.x.usage.cost) || 0), 0); const cap = f.rows.reduce((a, r) => a + (Number.isFinite(budgetOf(r.s, r.x)) ? budgetOf(r.s, r.x) : 0), 0);
   return `<b>${f.running}</b> ${esc(T('plan.running'))} · <b>${waits.length}</b> ${esc(T('plan.waitingN', { n: waits.length }))} · <b>${fmtCost(spent)}</b> ${esc(T('plan.ofCap', { b: fmtBudget(cap) }))}${problems.length ? ` · <span class="t-neg">${esc(problems.join(', '))}</span>` : ''}`; };

@@ -203,7 +203,7 @@ test('the server: off by default, the setting by the cookie only and the token n
   await until(async () => (await S.session('run', 'M')).status === 'waiting');
   t = (await S.post('/api/team/sync', { project: root })).body;
   const mine = relay.presenceOf(repoId).find((m) => m.member === 'Dev'); const pub = mine.sessions.find((x) => x.id === 'M');
-  assert.ok(pub, 'our waiting session is published'); assert.deepEqual([pub.status, pub.files, pub.title], ['waiting', ['migrations/002_add.sql'], 'La migration']); assert.match(pub.branch, /^escadrille\/run\/M$/);
+  assert.ok(pub, 'our waiting session is published'); assert.deepEqual([pub.status, pub.files, pub.title], ['waiting', ['migrations/002_add.sql'], 'La migration']); assert.match(pub.branch, /^calmdev\/run\/M$/);
   assert.ok(!mine.sessions.some((x) => x.id === 'A'), 'a planned session is not published');
   const mig = t.collisions.find((c) => c.ours.id === 'M'); assert.ok(mig, JSON.stringify(t.collisions)); assert.deepEqual([mig.kind, mig.file], ['migrations', 'migrations/']);
   s = await S.session('run', 'M'); assert.equal(s.pending.filter((p) => p.kind === 'info' && p.team).length, 1);

@@ -84,7 +84,7 @@ const htmlTexts = (src) => {
 const STOP = 'le la les des du une est sont pas sur avec pour dans aucun aucune rien cette ces qui que et ou où au aux ton ta tes ses son sa plus encore déjà tout tous toutes fois ici puis sans chez vers par'.split(' ');
 const enWords = new Set(Object.values(en).flatMap((v) => (typeof v === 'object' ? Object.values(v) : [v])).join(' ').toLowerCase().match(/[\p{L}]+/gu) || []);
 const frWords = new Set(Object.values(fr).flatMap((v) => (typeof v === 'object' ? Object.values(v) : [v])).join(' ').toLowerCase().match(/[\p{L}]+/gu) || []);
-const ALLOW = new Set(['escadrille', 'claude', 'code', 'mac', 'iphone', 'linear', 'github', 'conversation', 'architecture', 'session', 'sessions', 'plan', 'plans', 'note', 'notes', 'type', 'source', 'test', 'tests', 'pilote', 'poste', 'main', 'lit', 'journal', 'cli']);
+const ALLOW = new Set(['escadrille', 'claude', 'code', 'mac', 'iphone', 'linear', 'github', 'conversation', 'architecture', 'session', 'sessions', 'plan', 'plans', 'note', 'notes', 'type', 'source', 'test', 'tests', 'pilote', 'poste', 'main', 'lit', 'journal', 'cli', 'propose']); // propose: English as well (the pilot's verb key, public/pilotlog.js)
 const VOCAB = new Set([...STOP, ...[...frWords].filter((w) => w.length > 2 && !enWords.has(w) && !ALLOW.has(w))]);
 const french = (s) => {
   const text = s.replace(/<[^>]*>/g, ' ').replace(/&\w+;/g, ' ').replace(/[\w-]+="[^"]*"?/g, ' ').replace(/\b[a-z]+(?:-[a-z]+)+\b/g, ' '); // tags, attributes, css-like names

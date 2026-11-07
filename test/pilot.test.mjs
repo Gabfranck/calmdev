@@ -128,8 +128,10 @@ test('the switch is off by default; lit, the pilot answers the waiting message i
   assert.match(pilotTurns()[0].text, /Où en est-on \?/);
   const args = lines(path.join(F.dir, 'pilot-args.jsonl'))[0];
   assert.ok(args.includes('--max-budget-usd') && args[args.indexOf('--max-budget-usd') + 1] === '2', 'a wake is capped at 2 $');
-  assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk'); assert.ok(!args.includes('Edit') && !args.includes('Write'), 'read-only');
-  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).sandbox.network.allowedDomains, [], 'no network');
+  assert.equal(args[args.indexOf('--permission-mode') + 1], 'dontAsk'); assert.ok(!args.includes('Edit') && !args.includes('Write'), 'writes are not granted in advance');
+  const st = JSON.parse(args[args.indexOf('--settings') + 1]);
+  assert.deepEqual(st.sandbox.network.allowedDomains, [], 'no network');
+  assert.ok(st.hooks.PreToolUse.some((h) => h.hooks.some((x) => /scripts\/policy-hook\.mjs" --pilot --port \d+$/.test(x.command))), 'POL: each call of the pilot goes through /api/policy/check');
   assert.equal(args[args.indexOf('--model') + 1], 'claude-sonnet-5-5', 'no setting: the pilot runs on Sonnet');
 });
 

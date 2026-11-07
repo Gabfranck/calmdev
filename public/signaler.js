@@ -55,7 +55,8 @@
   }).catch(() => {});
 
   const grow = () => { field.style.height = 'auto'; field.style.height = Math.min(field.scrollHeight + 2, 140) + 'px'; };
-  const fail = (msg) => { err.textContent = msg; err.hidden = false; };
+  // an error carries the « Retour » link: the report of public/feedback.js, folded in Accès, opened there
+  const fail = (msg) => { err.innerHTML = `${esc(msg)} · <a class="card-link" href="${esc(withProject('/?retour=1', project))}#acces">${esc(T('fb.link'))}</a>`; err.hidden = false; };
   let busy = false;
   const submit = async () => {
     const text = field.value.trim();

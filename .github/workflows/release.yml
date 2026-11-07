@@ -1,6 +1,8 @@
 # Release (docs/ci.md).
-# - On a v* tag: builds the desktop app (desktop/, Tauri) on macOS and attaches the .dmg to a DRAFT GitHub Release.
+# - On a v* tag: builds the desktop app (desktop/, Tauri) on macOS, universal (aarch64 + x86_64), and attaches the .dmg,
+#   the .app.tar.gz, its .sig and a latest.json (what the installed app reads to update itself) to a DRAFT GitHub Release.
 #   Nothing is published: the developer reads the draft and publishes it by hand on GitHub.
+#   The first step lists the missing secrets in the job summary and stops the job when the update key is missing.
 #   Apple signing and notarization run only when the APPLE_* secrets exist; otherwise the .dmg stays unsigned, with a warning.
 # - The npm package is published by a separate job, only on a manual run (workflow_dispatch), behind the `release`
 #   environment (a required approval is set there) and the NPM_TOKEN secret. A tag never publishes anything to npm.
@@ -28,14 +30,55 @@ jobs:
     permissions:
       contents: write # creates the draft release and uploads the .dmg
     steps:
+      - name: Secrets present? (names only, never a value)
+        id: secrets
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD; do
+            eval "value=\${$name}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          {
+            echo "### Release secrets"
+            if [ -z "$missing" ]; then
+              echo "All eight secrets are set."
+            else
+              echo "Missing:"
+              for name in $missing; do echo "- \`$name\`"; done
+              echo
+              echo "Steps to create them: docs/desktop.md, section « Publier une version »."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$missing" in
+            *TAURI_SIGNING_PRIVATE_KEY*)
+              echo "::error::The update key is missing (TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD): nothing was built, nothing was uploaded. See the job summary."
+              exit 1 ;;
+          esac
+          [ -z "$missing" ] || echo "::warning::Missing secrets:$missing (see the job summary)"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.13'
-      - name: Rust toolchain (rustup is on the macOS runner)
+      - name: The tag matches the app version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(node -p 'require("./desktop/src-tauri/tauri.conf.json").version')
+          [ "$TAG" = "v$version" ] || { echo "::error::tag $TAG but desktop/src-tauri/tauri.conf.json says $version: change the version, commit, tag again."; exit 1; }
+      - name: Rust toolchain, both Mac targets (rustup is on the macOS runner)
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
           rustc --version
       - name: Tauri CLI (desktop/package-lock.json)
         working-directory: desktop
@@ -65,20 +108,49 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx --no-install tauri build --bundles dmg
+          # the update key signs the .app.tar.gz (minisign); the installed app verifies it with the public key
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --no-install tauri build --target universal-apple-darwin --bundles app,dmg
       - name: Build (unsigned)
         if: steps.apple.outputs.signed != 'true'
         working-directory: desktop
-        run: npx --no-install tauri build --bundles dmg
-      - name: Attach the .dmg to a draft release
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx --no-install tauri build --target universal-apple-darwin --bundles app,dmg
+      - name: Attach the .dmg, the update and latest.json to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           SIGNED: ${{ steps.apple.outputs.signed }}
         run: |
-          set -- desktop/src-tauri/target/release/bundle/dmg/*.dmg
-          [ -f "$1" ] || { echo "::error::no .dmg under desktop/src-tauri/target/release/bundle/dmg"; exit 1; }
-          if [ "$SIGNED" = true ]; then note="Signed and notarized macOS build."; else note="UNSIGNED macOS build: right-click > Open on first launch."; fi
+          bundle=desktop/src-tauri/target/universal-apple-darwin/release/bundle
+          set -- $bundle/dmg/*.dmg
+          dmg=$1
+          set -- $bundle/macos/*.app.tar.gz
+          update=$1
+          [ -f "$dmg" ] || { echo "::error::no .dmg under $bundle/dmg"; exit 1; }
+          [ -f "$update" ] || { echo "::error::no .app.tar.gz under $bundle/macos (createUpdaterArtifacts, TAURI_SIGNING_PRIVATE_KEY)"; exit 1; }
+          [ -f "$update.sig" ] || { echo "::error::no $update.sig"; exit 1; }
+          # latest.json: what the installed app reads at https://github.com/Gabfranck/calmdev/releases/latest/download/latest.json
+          UPDATE_FILE=$update node -e '
+            const fs = require("fs"), path = require("path");
+            const file = process.env.UPDATE_FILE, tag = process.env.TAG;
+            const entry = {
+              signature: fs.readFileSync(file + ".sig", "utf8").trim(),
+              url: `https://github.com/Gabfranck/calmdev/releases/download/${tag}/${path.basename(file)}`,
+            };
+            const latest = {
+              version: tag.replace(/^v/, ""),
+              notes: `calmdev ${tag}`,
+              pub_date: new Date().toISOString(),
+              platforms: { "darwin-aarch64": entry, "darwin-x86_64": entry }, // one universal archive for both
+            };
+            fs.writeFileSync("latest.json", JSON.stringify(latest, null, 2) + "\n");
+          '
+          set -- "$dmg" "$update" "$update.sig" latest.json
+          if [ "$SIGNED" = true ]; then note="Signed and notarized macOS build (universal)."; else note="UNSIGNED macOS build (universal): right-click > Open on first launch."; fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$@" --clobber
           else

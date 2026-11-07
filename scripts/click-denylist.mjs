@@ -30,6 +30,7 @@ export const DENY_LABEL = label([
   'ouvrir la pr', 'ouvrir dans un terminal', 'terminal', 'dev server', 'start', 'démarrer',
   'run the tests', 'run tests', 'les tests', 'install', 'pair', 'appair', 'disconnect', 'déconnecter', 'reset', 'réinitialiser',
   'pull request', 'pr(?![\\p{L}])', 'copy', 'copier',
+  'open an issue', 'ouvrir une issue', // « Retour » (public/feedback.js): the one gesture that sends the report out
 ]);
 
 // An element that only exists to act. data-* names (any value) and ids found on buttons of public/.

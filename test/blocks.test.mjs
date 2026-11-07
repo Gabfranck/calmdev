@@ -12,6 +12,19 @@ test('finds both blocks and strips them from the prose', () => {
   assert.equal(stripBlocks(text), 'Voici mes questions.\n\nEt le plan :');
 });
 
+test('a stream with the old escadrille: blocks and one with the new calmdev: blocks read the same', () => {
+  const state = '{"stops":[0],"health":"ok","why":"","claude":"Regarde a.md","summary":"Fait : a\\nReste : rien","done":false}';
+  const pilot = '{"actions":[{"do":"memory","line":"x"}]}'; const plan = '{"title":"T","sessions":[]}';
+  for (const name of ['escadrille', 'calmdev']) {
+    const msg = `Fini.\n\n\`\`\`${name}:state\n${state}\n\`\`\`\n\n\`\`\`${name}:plan\n${plan}\n\`\`\`\n\n\`\`\`${name}:pilot\n${pilot}\n\`\`\``;
+    const blocks = findBlocks(msg);
+    assert.deepEqual(blocks.map((b) => b.kind), ['state', 'plan', 'pilot'], name);
+    assert.equal(blocks[0].value.claude, 'Regarde a.md'); assert.equal(blocks[2].value.actions[0].line, 'x');
+    assert.equal(stripBlocks(msg), 'Fini.', name);
+  }
+  assert.deepEqual(findBlocks('```other:state\n{}\n```'), [], 'another prefix is not ours');
+});
+
 test('reports a block whose JSON is broken', () => {
   const [b] = findBlocks('```escadrille:plan\n{"title": }\n```');
   assert.match(b.error, /JSON invalide/);

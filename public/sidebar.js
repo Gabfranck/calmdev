@@ -85,8 +85,7 @@
 
   // The theme: the system's, unless the URL says ?theme=dark or ?theme=light (a capture, a check of the other theme);
   // app.css reads data-theme on <html>. Set before the bar is drawn so the mark and the page take it together.
-  // ?wco=mac simulates the borderless app for a capture (app.css draws the three macOS buttons and the title row)
-  const theme = () => { try { const q = new URLSearchParams(root.location.search); const t = q.get('theme'); if (t === 'dark' || t === 'light') root.document.documentElement.dataset.theme = t; if (q.get('wco') === 'mac') root.document.documentElement.dataset.wco = 'mac'; } catch {} };
+  const theme = () => { try { const q = new URLSearchParams(root.location.search); const t = q.get('theme'); if (t === 'dark' || t === 'light') root.document.documentElement.dataset.theme = t; } catch {} };
   // The mark, inline: the geometry of scripts/brand.mjs (public/brand/symbol.svg, test/tokens.test.mjs keeps them equal),
   // calmdev's open c in the text ink and its still point in the accent, so the mark follows the theme like every other token
   const MARK = '<svg viewBox="0 0 256 256" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="34" stroke-linecap="round" d="M196.37 66.44A92 92 0 1 0 196.37 189.56"/><circle fill="var(--accent)" cx="128" cy="128" r="30"/></svg>';
@@ -107,12 +106,10 @@
   // The skeleton, drawn once: the entry, the place of the projects, the add line, the bottom line with the blocks
   // mac.js and phone.js fill
   const markup = () => `<button type="button" class="btn ghost close" data-close>${esc(T('nav.close'))}</button>
-<div class="drag-strip" aria-hidden="true"></div>
 <a class="nav-item entry" data-entry href="${ENTRY}" title="${esc(T('nav.entryTitle'))}">${MARK}<span class="label">${esc(T('nav.entry'))}</span></a>
 <div class="projects" id="sbProjects" role="list" aria-label="${esc(T('nav.projectsAria'))}"></div>
 <p class="pp-note" id="ppNote" aria-live="polite" hidden></p>
 ${addMarkup()}
-<div class="install-line" id="installLine" hidden></div>
 <div class="bottom"><div class="lang-pick" role="group" aria-label="${esc(T('lang.aria'))}">${['en', 'fr'].map((l) => `<button type="button" data-lang="${l}" lang="${l}" aria-pressed="${String(lang() === l)}" data-tip="${esc(T('lang.' + l))}">${esc(T('lang.' + l + 'Short'))}</button>`).join('<span aria-hidden="true">·</span>')}</div>
 <details class="bottom-line" id="bottomLine"><summary><span class="live-dot" id="liveDot" aria-hidden="true"></span><span class="t" id="bottomText">${esc(T('nav.thisMac'))}</span></summary>
   <div class="b">
@@ -438,7 +435,6 @@ ${addMarkup()}
     S.el.innerHTML = markup(); const host = $('#host'); if (host && root.location) host.textContent = root.location.host;
     if (opened) { const bl = $('#bottomLine'); if (bl) bl.open = true; }
     P.add = false;
-    if (root.escadrilleApp) root.escadrilleApp.sync();
   };
   // Another language: the bar is drawn again with its data, without a reload
   if (root.escadrilleI18n) root.escadrilleI18n.onChange(() => { if (!S.el) return; draw(); drawProjects(); fill(); connect(); });

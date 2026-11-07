@@ -6,9 +6,7 @@
 <script src="/i18n.js"></script>
 <script src="/ux.js"></script>
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
-<script src="/app-window.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title data-i18n="rev.title"></title>
 <link rel="stylesheet" href="/app.css">
@@ -58,6 +56,26 @@
 .calm .bar { width: 120px; height: 6px; border-radius: 3px; background: var(--active); overflow: hidden; flex: none; }
 .calm .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width var(--t-ui) var(--ease-out); }
 .calm .seen { font-weight: 500; }
+/* « Avant de signer »: one block in the calm header, three leads open, the rest in one line */
+.sign { flex: 1 1 100%; display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line, var(--active)); }
+.sign-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.sign-head .out-line { color: var(--pill-warning-ink); font-size: var(--fs-small); }
+.sign .pistes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sign .piste { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.sign .piste .t { flex: 1 1 320px; min-width: 0; max-width: 72ch; }
+.sign .piste .where { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-small); color: var(--muted); }
+.sign .piste .more { flex: 1 1 100%; padding-left: 8px; font-size: var(--fs-small); color: var(--muted); }
+.sign .piste .more summary { cursor: pointer; width: max-content; }
+.sign .piste .more p { margin: 4px 0; max-width: 72ch; }
+.sign .piste .more .btn, .sign .piste .more .link { margin-right: 10px; }
+.sign .pill.out { background: transparent; border: 1px solid currentColor; color: var(--pill-warning-ink); }
+.sign .rest-pistes summary { cursor: pointer; color: var(--muted); font-size: var(--fs-small); width: max-content; }
+.sign .rest-pistes .pistes { margin-top: 6px; }
+.sign .declare { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: var(--fs-small); }
+.sign .declare label { display: inline-flex; gap: 4px; align-items: center; }
+.sign .declared { margin: 0; font-size: var(--fs-small); color: var(--muted); }
+.sign button.link, .rv-sign { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; font-size: var(--fs-small); }
+.rv-sign { color: var(--pill-warning-ink); white-space: nowrap; margin-right: 8px; }
 .calm .time { color: var(--muted); }
 .calm details { flex: 1 1 100%; }
 .calm details > summary { font-size: var(--fs-body); color: var(--text); }
@@ -451,7 +469,7 @@ const barFile = () => { const f = order[cur]; if (!f) return ''; const doc = vie
 const mergedLabel = () => T('rev.merged', { commit: String(R.merged.commit || '').slice(0, 7) || '?' });
 const mergedSub = () => [R.merged.into ? T('rev.mergedInto', { into: R.merged.into }) : '', R.merged.by ? T('rev.mergedBy', { by: R.merged.by }) : ''].filter(Boolean).join(' · ');
 const barHtml = () => R.merged ? `<div class="rv-bar" id="rvBar" role="region" aria-label="${esc(T('rev.barAria'))}"><div class="rv-bar-row"><span class="rv-bar-cur" id="rvCur">${barFile()}</span><span class="spacer"></span><span class="pill pos" data-merged>${esc(mergedLabel())}</span><span class="m">${esc(mergedSub())}</span></div></div>` : `<div class="rv-bar" id="rvBar" role="region" aria-label="${esc(T('rev.barAria'))}">${finishPanel()}<div class="rv-bar-row"><span class="rv-bar-cur" id="rvCur">${barFile()}</span><span class="spacer"></span>
-    <button type="button" class="btn" data-verdict="comment" aria-expanded="${finishOpen && verdictPick === 'comment'}" aria-controls="finishPanel">${esc(T('rev.comment'))}</button><button type="button" class="btn" data-verdict="changes" aria-expanded="${finishOpen && verdictPick === 'changes'}" aria-controls="finishPanel">${esc(T('rev.askChanges'))}</button>${R.mergeOnApprove ? `${blockedLine()}<button type="button" class="btn primary" id="finish" data-approve-merge>${esc(T('rev.approveMerge'))}</button>` : `<button type="button" class="btn primary" id="finish" data-verdict="approve" aria-expanded="${finishOpen && verdictPick === 'approve'}" aria-controls="finishPanel">${esc(T('rev.approve'))}</button>`}</div></div>`;
+    <button type="button" class="btn" data-verdict="comment" aria-expanded="${finishOpen && verdictPick === 'comment'}" aria-controls="finishPanel">${esc(T('rev.comment'))}</button><button type="button" class="btn" data-verdict="changes" aria-expanded="${finishOpen && verdictPick === 'changes'}" aria-controls="finishPanel">${esc(T('rev.askChanges'))}</button>${signLine()}${R.mergeOnApprove ? `${blockedLine()}<button type="button" class="btn primary" id="finish" data-approve-merge>${esc(T('rev.approveMerge'))}</button>` : `<button type="button" class="btn primary" id="finish" data-verdict="approve" aria-expanded="${finishOpen && verdictPick === 'approve'}" aria-controls="finishPanel">${esc(T('rev.approve'))}</button>`}</div></div>`;
 // Approve and merge (Dev, 6 novembre): a finished session merges on the click; when it cannot, the approve stays and one
 // line next to the button says why and the gesture that unblocks
 const blockedLine = () => { const b = R.mergeBlocked; if (!b) return ''; const s = T('rev.blocked.' + b.kind, { why: b.why }); return `<span class="rv-blocked" id="rvBlocked" role="status" title="${esc(s)}">${esc(s)}</span>`; };
@@ -462,7 +480,7 @@ const afterSubmit = async (verdict, r) => {
   const said = verdict === 'approve' ? (r.merged ? T('rev.sentMerged') : T('rev.sentApproved')) : r.sent || R.session ? T('rev.sentTo', { s: R.session || '' }) : T('rev.sent');
   $('#stamp').textContent = said; await sentBar(verdict, said); };
 const approveMerge = async (btn) => { btn.disabled = true;
-  try { await afterSubmit('approve', await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict: 'approve', body: '' })); } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } };
+  try { await afterSubmit('approve', await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict: 'approve', body: '', head: R.headSha })); } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } };
 // After « Envoyer la revue » (Dev, 2 novembre 02:32: « rien ne s'est passé »): the verdict's badge in the head (render), and
 // the bar becomes the answer: the verdict, what happened, the next review to read (primary, focused) or the way back
 const listHref = () => '/review' + (R.project || R.repo ? '?project=' + encodeURIComponent(R.project || R.repo) : '');
@@ -486,10 +504,30 @@ const finishPanel = () => { const open = (R.comments || []).filter((c) => !c.res
       <label class="radio"><input type="radio" name="verdict" value="approve" ${verdictPick === 'approve' ? 'checked' : ''}><span>${esc(T('rev.approve'))}</span><small>${esc(T('rev.canMerge'))}</small></label>
       <label class="radio"><input type="radio" name="verdict" value="changes" ${verdictPick === 'changes' ? 'checked' : ''}><span>${esc(T('rev.askChanges'))}</span><small>${esc(R.session ? T('rev.toFixSent', { s: R.session }) : T('rev.toFix'))}</small></label></fieldset>
     <div class="row"><span class="note">${open ? esc(T('rev.openJoined', { n: open })) : ''}</span><button type="submit" class="btn primary">${esc(T('rev.send'))}</button></div></form>`; };
+// « Avant de signer » (docs/apprendre-en-signant.md): three leads open, the rest in one line, a question to a peer for
+// what lies outside the developer's domains, the domains declared once; nothing blocks the approval
+const PISTES = () => (R.prereview && R.prereview.pistes) || [];
+// the three one-line texts, in the page's language from the numbers of the pre-review (counts)
+const SC = () => (R.prereview && R.prereview.counts) || { open: 0, folded: 0, foldedReliable: 0, fragile: 0, outside: [] };
+const domainList = (keys) => keys.map((d) => T('sign.domain.' + d)).join(', ');
+const signBar = () => { const c = SC(); return [c.fragile ? T('sign.barFragile', { n: c.fragile }) : null, c.outside.length ? T('sign.barOutside', { n: c.outside.length }) : null].filter(Boolean).join(' · '); };
+const signOutside = () => { const c = SC(); return c.outside.length ? T('sign.outside', { n: c.outside.length, list: domainList(c.outside) }) : ''; };
+const signRest = () => { const c = SC(); return c.folded ? [T(c.open ? 'sign.restOther' : 'sign.rest', { n: c.folded }), c.foldedReliable ? T('sign.restReliable', { n: c.foldedReliable }) : null].filter(Boolean).join(' · ') : ''; };
+const signLine = () => { const s = signBar(); return s ? `<button type="button" class="rv-sign link" data-goto-sign title="${esc(T('sign.title'))}">${esc(s)}</button>` : ''; };
+const pisteHtml = (p, k) => { const f = p.path && fileOf(p.path);
+  const where = p.path ? (f ? `<button type="button" class="card-link where" data-goto="${idx(f)}">${esc(p.path)}${p.line ? ':' + p.line : ''}</button>` : `<code class="where">${esc(p.path)}${p.line ? ':' + p.line : ''}</code>`) : '';
+  return `<li class="piste k-${p.kind}"><span class="pill ${p.kind === 'fragile' ? 'neg' : p.kind === 'reliable' ? 'pos' : 'warn'}">${esc(T('sign.kind.' + p.kind))}</span>${p.outside ? `<span class="pill out">${esc(T('sign.validate'))}</span>` : ''}<span class="t">${esc(p.title)}</span>${where}
+    <details class="more"><summary>${esc(T('sign.detail'))}</summary><p>${esc(p.detail || '')}</p>${p.ask ? `<button type="button" class="btn small" data-copy-ask="${k}">${esc(T('sign.copy', { d: T('sign.domain.' + p.ask.to) }))}</button>` : ''}${p.kind !== 'reliable' && !p.detector.startsWith('risk') ? `<button type="button" class="link" data-know="${esc(p.detector)}" data-known="${p.known ? 1 : ''}">${esc(T(p.known ? 'sign.unknow' : 'sign.know'))}</button>` : ''}</details></li>`; };
+let signDomains = null; // the declaration line: GET /api/signing, once
+const declareHtml = () => { const d = R.prereview && R.prereview.declare; if (!d || signDomains === 'done') return '';
+  return `<form class="declare" id="declare"><span>${esc(T('sign.declare'))}</span>${d.domains.map((x) => `<label><input type="checkbox" name="d" value="${x}" ${d.recommended.includes(x) ? 'checked' : ''}>${esc(T('sign.domain.' + x))}</label>`).join('')}<button type="submit" class="btn small">${esc(T('sign.declareSave'))}</button></form>`; };
+const signHtml = () => { const ps = PISTES(); if (!ps.length) return ''; const pr = R.prereview; const open = ps.filter((p) => p.open), rest = ps.filter((p) => !p.open);
+  return `<section class="sign" id="sign" aria-label="${esc(T('sign.title'))}"><div class="sign-head"><b>${esc(T('sign.title'))}</b>${signOutside() ? `<span class="out-line">${esc(signOutside())}</span>` : ''}</div>${declareHtml()}
+    <ul class="pistes">${open.map((p) => pisteHtml(p, ps.indexOf(p))).join('')}</ul>${rest.length ? `<details class="rest-pistes"><summary>${esc(signRest())}</summary><ul class="pistes">${rest.map((p) => pisteHtml(p, ps.indexOf(p))).join('')}</ul></details>` : ''}</section>`; };
 const calmHtml = () => { const seen = R.files.filter((f) => f.viewed).length, total = R.files.length; const pr = R.prereview;
-  const fl = [...first].map(([p, why]) => `<li><button type="button" class="card-link" data-goto="${idx(fileOf(p))}">${esc(p)}</button><span class="why">${esc(why)}</span></li>`).join('');
+  const fl = PISTES().length ? '' : [...first].map(([p, why]) => `<li><button type="button" class="card-link" data-goto="${idx(fileOf(p))}">${esc(p)}</button><span class="why">${esc(why)}</span></li>`).join('');
   return `<div class="calm" id="calm"><span class="bar" role="progressbar" aria-label="${esc(T('rev.seenAria'))}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${seen}"><i style="width:${total ? seen / total * 100 : 0}%"></i></span><span class="seen num" id="seen">${esc(T('rev.seenN', { a: seen, b: total }))}</span>
-    ${first.size || pr || delta ? `<details id="first"><summary>${first.size ? T('rev.firstN', { files: T('rev.files', { n: first.size }), d: duration(minutesOf(R.files.filter((f) => first.has(f.path) && !f.viewed))) }) : esc(T('rev.flagged'))}</summary>${first.size && total > first.size ? `<p class="rest">${esc(T('rev.rest', { files: T('rev.files', { n: total - first.size }), d: duration(minutesOf(R.files.filter((f) => !first.has(f.path) && !f.viewed))) }))}</p>` : ''}${fl ? `<ul class="first-list">${fl}</ul>` : ''}${pr && pr.summary ? `<p class="summary">${esc(pr.summary)}</p>` : ''}${delta && delta.summary ? `<p class="arch">${esc(delta.summary)}</p>` : ''}</details>` : ''}</div>`; };
+    ${first.size || pr || delta ? `<details id="first"><summary>${first.size ? T('rev.firstN', { files: T('rev.files', { n: first.size }), d: duration(minutesOf(R.files.filter((f) => first.has(f.path) && !f.viewed))) }) : esc(T('rev.flagged'))}</summary>${first.size && total > first.size ? `<p class="rest">${esc(T('rev.rest', { files: T('rev.files', { n: total - first.size }), d: duration(minutesOf(R.files.filter((f) => !first.has(f.path) && !f.viewed))) }))}</p>` : ''}${fl ? `<ul class="first-list">${fl}</ul>` : ''}${pr && pr.summary ? `<p class="summary">${esc(pr.summary)}</p>` : ''}${delta && delta.summary ? `<p class="arch">${esc(delta.summary)}</p>` : ''}</details>` : ''}${signHtml()}</div>`; };
 const render = () => {
   $('#crumb').textContent = R.plan ? T('rev.crumb', { what: R.session ? T('rev.sessionS', { s: R.session }) : R.plan }) : T('rev.title');
   $('#canvas').innerHTML = headHtml() + calmHtml()
@@ -520,6 +558,10 @@ document.addEventListener('click', async (e) => { const t = e.target;
   const vb = t.closest('[data-verdict]'); if (vb) { if (finishOpen && verdictPick === vb.dataset.verdict) closeFinish(); else openFinish(vb.dataset.verdict, vb); return; }
   if (finishOpen && !t.closest('#finishPanel')) closeFinish(false);
   const st = t.closest('[data-step]'); if (st) { setCur(cur + Number(st.dataset.step)); const b = $(`[data-step="${st.dataset.step}"]`); if (b && !b.disabled) b.focus(); return; }
+  // « Avant de signer »: copy the question (nothing is sent), « Je connais », the bar line back to the block
+  const ca = t.closest('[data-copy-ask]'); if (ca) { const p = PISTES()[+ca.dataset.copyAsk]; try { await navigator.clipboard.writeText(p.ask.question); ca.textContent = T('sign.copied'); } catch { ca.textContent = T('sign.copyFail'); } return; }
+  const kn = t.closest('[data-know]'); if (kn) { const key = kn.dataset.know, was = !!kn.dataset.known; try { await api('/api/signing', was ? { unknow: key } : { know: key }); for (const p of PISTES()) if (p.detector === key) p.known = !was; kn.dataset.known = was ? '' : '1'; kn.textContent = T(was ? 'sign.know' : 'sign.unknow'); } catch {} return; }
+  if (t.closest('[data-goto-sign]')) { const s = $('#sign'); if (s) { s.scrollIntoView({ block: 'start' }); const r = s.querySelector('.rest-pistes'); if (r) r.open = true; } return; }
   const go = t.closest('[data-goto]'); if (go) { const k = order.indexOf(R.files[+go.dataset.goto]); const g = order[k]; if (folded.has(g.path) && !g.viewed) { folded.delete(g.path); redrawFile(g); } setCur(k); if (matchMedia('(max-width: 860px)').matches && $('#tree')) $('#tree').open = false; return; }
   if (t.closest('[data-toggle-view]') && f) { view.get(f.path) === 'rendered' ? view.delete(f.path) : view.set(f.path, 'rendered'); folded.delete(f.path); redrawFile(f); return; }
   const dc = t.closest('[data-decide]'); if (dc) { const key = dc.closest('.decide').dataset.key; const a = dc.dataset.decide; const d = decisions.get(key) || {};
@@ -540,7 +582,7 @@ document.addEventListener('input', (e) => { if (e.target.id === 'filter') { filt
 // one decision: on a file of this review ({ path }) or on an item of the queue (its own id). POST /api/review/:id/decide
 const qitems = new Map();
 const decide = async (key, action, reason = '') => { const item = qitems.get(key); const id = item ? item.id : R.id;
-  try { const r = await api(`/api/review/${encodeURIComponent(id)}/decide`, item ? { action, reason } : { path: key, action, reason });
+  try { const r = await api(`/api/review/${encodeURIComponent(id)}/decide`, item ? { action, reason, head: item.headSha } : { path: key, action, reason, head: R.headSha }); // head always: the server grants no « à relire » without the commit seen
     const d = decisions.get(key) || {}; const retries = r.retries ?? (action === 'retry' ? (d.retries || (item && item.retries) || 0) + 1 : d.retries);
     decisions.set(key, { decision: action === 'retry' || action === 'reopen' ? null : action, reason, retries, editing: false }); redrawDecide(key);
     $('#stamp').textContent = action === 'reject' ? T('rev.refusalSent') : action === 'retry' ? T('rev.retrySent') : action === 'accept' ? T('rev.acceptedDot') : '';
@@ -549,12 +591,13 @@ const redrawDecide = (key) => { drawBar(); const el = $(`.diffs .decide[data-key
   const base = item ? { retries: item.retries, decision: item.decision } : (fileOf(key) && fileOf(key).decision) || {};
   el.outerHTML = decideBar(key, { ...base, ...(decisions.get(key) || {}) }, item ? item.retryMax ?? 2 : R.retryMax ?? 2); };
 document.addEventListener('submit', async (e) => { e.preventDefault(); const fm = e.target;
+  if (fm.id === 'declare') { const domains = [...fm.querySelectorAll('input[name=d]:checked')].map((i) => i.value); try { await api('/api/signing', { domains }); signDomains = 'done'; fm.outerHTML = `<p class="declared">${esc(T('sign.declared'))}</p>`; } catch {} return; }
   if (fm.matches('[data-reason]')) { const key = fm.closest('.decide').dataset.key; const reason = fm.reason.value.trim(); if (reason) decide(key, 'reject', reason); return; }
   if (fm.matches('[data-form]')) { const f = R.files[+fm.closest('.file').dataset.i]; const body = fm.body.value.trim(); if (!body) return; const btn = fm.querySelector('[type=submit]'); btn.disabled = true;
     try { const r = await api(`/api/review/${encodeURIComponent(R.id)}/comment`, { path: f.path, side: formAt.side, line: formAt.line, body }); R.comments.push(r.comment || { id: Date.now(), path: f.path, side: formAt.side, line: formAt.line, body, author: 'dev', at: new Date().toISOString() }); closeForm(); } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.commentNot', { e: err.message }); } return; }
   if (fm.id === 'finishPanel') { const verdict = fm.verdict.value, body = fm.body.value.trim();
     if (verdict !== 'approve' && !body) { fm.body.placeholder = 'Un mot requis'; fm.body.focus(); return; } const btn = fm.querySelector('[type=submit]'); btn.disabled = true;
-    try { const r = await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict, body }); closeFinish(false); await afterSubmit(verdict, r); R.verdict.body = body; } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } }
+    try { const r = await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict, body, head: R.headSha }); closeFinish(false); await afterSubmit(verdict, r); R.verdict.body = body; } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } }
 });
 // on touch, a tap on a line shows its « + » (no hover there)
 document.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; const c = e.target.closest('table.diff td.c'); if (!c || e.target.closest('.plus')) return;

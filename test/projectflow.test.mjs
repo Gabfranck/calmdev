@@ -135,9 +135,9 @@ test('a merged session waits for nothing, even with a reply left pending (PX, 20
 test('the verb of « À toi »: a human stop is judged, a reply answered, a permission allowed, a branch merged', () => {
   const db = fixture();
   const set = (patch) => { const p = JSON.parse(db.prepare("select json from plans where id = 'p7'").get().json); db.prepare("update plans set json = ? where id = 'p7'").run(JSON.stringify({ ...p, ...patch })); };
-  db.prepare("update sessions set status = 'waiting', pending = ? where plan = 'p7' and id = 'A'").run(JSON.stringify([{ id: 'r', kind: 'reply', stop: 0, text: 'CAPTURE: x' }]));
+  db.prepare("update sessions set status = 'waiting', summary = 'Fait : tout\nReste : rien', pending = ? where plan = 'p7' and id = 'A'").run(JSON.stringify([{ id: 'r', kind: 'reply', stop: 0, text: 'CAPTURE: x' }]));
   let A = flowOf(db, PROJECT).nodes.find((n) => n.session === 'A'); assert.equal(A.waitingFor, 'dev'); assert.equal(A.verb, 'reply');
-  const p = JSON.parse(db.prepare("select json from plans where id = 'p7'").get().json); p.sessions[0].stops = [{ title: 'La planche', kind: 'taste' }, 'tests', 'PR']; set(p);
+  const p = JSON.parse(db.prepare("select json from plans where id = 'p7'").get().json); p.sessions[0].stops = [{ title: 'La planche', kind: 'taste' }]; set(p); // its last stop (ATOI: a taste with stops ahead goes on)
   A = flowOf(db, PROJECT, { pilot: true }).nodes.find((n) => n.session === 'A'); assert.equal(A.waitingFor, 'dev', 'a taste stop stays the developer\'s with a pilot'); assert.equal(A.verb, 'judge'); assert.equal(A.human, true);
 });
 

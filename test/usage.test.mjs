@@ -286,6 +286,27 @@ test('a quota reading older than the last weekly reset no longer counts: the new
   assert.equal(calibrate({ db, sessions, live: LIVE, now, cacheMs: 0 }).weeklyNow, 0.35);
 });
 
+// The defect of 2026-11-07: the weekly gauge stuck at 100 % while the cost kept rising gave 44 $ a point
+test('a saturated reading (utilization 1) never calibrates: the newest unsaturated one does, else not calibrated', () => {
+  const db = tmpDb();
+  db.exec('create table escadrilles (id text primary key, title text, project text, model text, session_id text, plan_id text, status text, install text, usage text, weekly real, reset_at text, created text, at text)');
+  db.exec('create table sessions (plan text, id text, status text, usage text, at text)');
+  const ins = db.prepare("insert into escadrilles (id, title, project, model, status, weekly, reset_at, created, at) values (?, 't', '/fx/alpha', 'claude-opus-5-5', 'stopped', ?, ?, ?, ?)");
+  const sessions = scanTranscripts({ root: ROOT });
+  const now = Date.parse('2026-11-01T01:00:00.000Z');
+  ins.run('full', 1, '2026-11-08T13:00:00.000Z', '2026-11-01T00:30:00.000Z', '2026-11-01T00:30:00.000Z');
+  let cal = calibrate({ db, sessions, live: LIVE, now, cacheMs: 0 });
+  assert.equal(cal.calibrated, false, 'a gauge at 100 % says nothing about the value of a point');
+  assert.equal(cal.dollarsPerPct, null); assert.equal(cal.saturated, true);
+  assert.equal(cal.weeklyNow, 1, 'the share shown stays the truth: 100 %');
+  ins.run('half', 0.5, '2026-11-08T13:00:00.000Z', '2026-10-31T23:00:00.000Z', '2026-10-31T23:00:00.000Z');
+  cal = calibrate({ db, sessions, live: LIVE, now, cacheMs: 0 });
+  assert.equal(cal.calibrated, true); assert.equal(cal.observedAt, '2026-10-31T23:00:00.000Z');
+  assert.equal(cal.weeklyNow, 1);
+  const given = calibrate({ sessions, quota: { weekly: 1, resetsAt: null, at: QUOTA.at }, live: LIVE, cacheMs: 0 });
+  assert.equal(given.calibrated, false, 'a saturated quota given by the caller does not calibrate either');
+});
+
 test('repoRoot: a worktree counts for its main repository', async () => {
   const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');

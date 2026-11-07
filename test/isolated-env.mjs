@@ -6,6 +6,7 @@
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { withGuard } from './test-env.mjs';
 
 const tmp = (p) => realpathSync(mkdtempSync(path.join(tmpdir(), p)));
 const DROP = /^(ESCADRILLE_|CALMDEV_|SM_DB$|PORT$|NODE_TEST_CONTEXT$)/; // NODE_TEST_CONTEXT: a child under node --test would speak TAP to the runner
@@ -16,6 +17,7 @@ export const isolatedEnv = (extra = {}) => {
   return {
     ...env,
     HOME: home,
+    NODE_OPTIONS: withGuard(env), // the server stops when its test dies (test/parent-guard.mjs)
     // git still needs a name for the commits a test repo makes, without the developer's ~/.gitconfig
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t',
     ESCADRILLE_HOME: home,

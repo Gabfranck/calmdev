@@ -86,11 +86,11 @@ Si une réponse en appelle une autre, pose la suite en un second message groupé
 
 ## 3. Le plan
 
-Quand tu as ce qu'il faut, écris le plan dans un bloc `escadrille:plan`. Le serveur l'enregistre,
+Quand tu as ce qu'il faut, écris le plan dans un bloc `calmdev:plan`. Le serveur l'enregistre,
 l'affiche, et ajoutera lui-même à chaque prompt le bloc de suivi (le `curl` de fin de tour) : ne
 l'écris pas.
 
-```escadrille:plan
+```calmdev:plan
 {
   "title": "Les avatars, en trois sessions",
   "goal": "Une phrase : ce que le plan livre et comment on saura que c'est fini.",
@@ -225,4 +225,4 @@ humain. Une chaîne seule reste valable (genre `info`, sans repli).
 
 Après le bloc, deux ou trois phrases : ce que le plan livre, ce que le développeur doit décider
 encore s'il reste quelque chose. S'il demande des changements, renvoie le plan entier corrigé dans
-un nouveau bloc `escadrille:plan`.
+un nouveau bloc `calmdev:plan`.

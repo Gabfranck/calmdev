@@ -44,15 +44,15 @@ const reviews = [{ id: 'r1', session: 'D', plan: 'p1', additions: 100, deletions
 const escs = [{ id: 'e1', status: 'waiting', stale: false, title: 'Phase 12' }, { id: 'e2', status: 'waiting', stale: true, title: 'old' }];
 
 test('« À toi » without a pilot: every wait, one line each, written by Escadrille, never the session\'s own words', () => {
-  const list = items({ nodes, perms, escs, reviews, proposals: [{ seq: 7, title: 'Plan X' }], pilot: false, install: true });
-  assert.deepEqual(list.map((i) => i.kind + ':' + (i.s || i.id || i.seq || '')), ['reply:B', 'design:T', 'permission:S', 'review:D', 'guard:G', 'planning:e1', 'proposal:7', 'install:']);
+  const list = items({ nodes, perms, escs, reviews, proposals: [{ seq: 7, title: 'Plan X' }], pilot: false });
+  assert.deepEqual(list.map((i) => i.kind + ':' + (i.s || i.id || i.seq || '')), ['reply:B', 'design:T', 'permission:S', 'review:D', 'guard:G', 'planning:e1', 'proposal:7']);
   assert.ok(!JSON.stringify(list).includes(RAW), 'no raw text of a session');
   assert.deepEqual(list[2].perm, { id: 'perm-1', tool: 'Bash', network: 'registry.npmjs.org' }, 'the permission says the tool and the domain, not the session\'s text');
 });
 
-test('« À toi » with a pilot present: only what the developer alone can do (a taste stop, a guard, a planning, a plan to launch, the install)', () => {
-  const list = items({ nodes, perms, escs, reviews, proposals: [{ seq: 7, title: 'Plan X' }], pilot: true, install: true });
-  assert.deepEqual(list.map((i) => i.kind), ['design', 'guard', 'planning', 'proposal', 'install']);
+test('« À toi » with a pilot present: only what the developer alone can do (a taste stop, a guard, a planning, a plan to launch)', () => {
+  const list = items({ nodes, perms, escs, reviews, proposals: [{ seq: 7, title: 'Plan X' }], pilot: true });
+  assert.deepEqual(list.map((i) => i.kind), ['design', 'guard', 'planning', 'proposal']);
   assert.deepEqual(items({ nodes: [], pilot: true }), [], 'nothing waits: nothing');
   // a finished branch waits for the developer's merge, pilot or not; a plan merged whole whose next plan waits for the click
   const merge = items({ nodes: [{ waitingFor: 'merge', session: 'FIX', plan: 'p' }], ends: [{ id: 'p/main', plan: 'p', waitingFor: 'dev', verb: 'launch', next: { id: 'q', title: 'Phase 13', status: 'todo' } }, { id: 'r/main', plan: 'r', waitingFor: null, next: null }], pilot: true });

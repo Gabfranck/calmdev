@@ -21,8 +21,9 @@ revue prête┘   par projet            │  memory   → une ligne dans la mém
 ## L'interrupteur
 
 Un interrupteur « Pilote » en tête de la Conversation, **éteint par défaut**. Allumé, il lance une session Claude
-Code longue pour le projet : `startSession` de `lib/planner.mjs`, stream-json, **dans le bac à sable**, outils
-de lecture seulement (`READ_ONLY_TOOLS`), `permissionMode: 'dontAsk'`, `network.allowedDomains: []`, le
+Code longue pour le projet : `startSession` de `lib/planner.mjs`, stream-json, **dans le bac à sable**, les
+lectures d'office (`READ_ONLY_TOOLS`) et tout le reste jugé par sa cible (le hook `scripts/policy-hook.mjs --pilot`,
+plus bas « Le garde-fou suit la cible »), `permissionMode: 'dontAsk'`, `network.allowedDomains: []`, le
 modèle du projet. Éteint, le processus s'arrête ; l'id de session reste pour une reprise.
 
 ```
@@ -135,7 +136,8 @@ Un plan ou une session que le serveur ne connaît pas (ou d'un autre projet) : l
    le clic de Dev le lance (même en Autonome, un plan avec des domaines attend le clic).
 3. **Rien de ce qu'une session écrit n'est exécuté.** Le serveur ne lit des blocs `escadrille:pilot` **que** dans
    le flux du pilote ; un bloc écrit par une session (dans son message, son bloc state, un fichier) n'est
-   jamais lu comme une action. Le pilote n'a que les outils de lecture du bac à sable. Testé : une session dont
+   jamais lu comme une action. Les appels du pilote passent par la même règle que ceux d'une conversation principale
+   (« Le garde-fou suit la cible »). Testé : une session dont
    l'arrêt contient une commande et un bloc `escadrille:pilot`, et rien ne part.
 4. **Le budget.** Un réveil a son plafond (`pilotBudget`, 2 $, passé en `--max-budget-usd`) ; la dépense du jour
    s'additionne (`pilot.spent`). Au plafond du jour (`pilotDaily`, 15 $), le pilote s'arrête et une ligne
@@ -154,8 +156,9 @@ Un plan ou une session que le serveur ne connaît pas (ou d'un autre projet) : l
    **Anti-boucle** : une même demande (même session, même commande normalisée, `permissionKey`) qui revient au
    développeur, ou que le pilote a refusée deux fois, est muette pour le pilote (`createDenials`, `muteWaiting` :
    ni réveil, ni chien de garde) et passe dans « À toi » ; la notification part une seule fois.
-8. **Le pilote n'accorde que la lecture.** Seule une demande que la règle lit `read-only` (« Lecture seule ») peut
-   recevoir `allow:true` du pilote ; écriture, exécution, installation remontent au développeur (même chemin que 7).
+8. **Le pilote accorde ce que la règle accorde** (POL, 7 novembre ; avant : la lecture seule). Une demande que
+   `lib/policy.mjs` autorise (lecture, écriture dans le worktree, commande locale, git local, outil installé) peut
+   recevoir `allow:true` du pilote ; ce qu'elle ne sait pas ou refuse remonte au développeur (même chemin que 7).
    Le pilote peut toujours refuser (`allow:false`) ou résumer la demande à Dev.
 9. **Le pilote ne change pas le contrat** (`scopeCheck`). Un `message`, ou un `answer` texte sur un arrêt, qui
    nomme un chemin hors des fichiers et dossiers du brief (`goal` du plan et `prompt` de la session) ou un mot
@@ -166,6 +169,88 @@ Un plan ou une session que le serveur ne connaît pas (ou d'un autre projet) : l
 10. **Le plafond d'un plan lancé seul** (`planCapCheck`). En Autonome, `launch` n'accepte qu'un plan dont le coût
    (le plus grand de l'estimation et de la somme des budgets) tient sous `pilotPlanCapUsd` (réglage du projet,
    `POST /api/pilot`, défaut 10 $) ; au-delà, ou coût inconnu, la carte reste « Plan proposé » et attend le clic.
+11. **Le rythme de relecture** (FREIN, 7 novembre ; `lib/brake.mjs`, `docs/burst.md`). Au-delà du seuil de
+   livraisons finies non relues du projet (Accès, défaut 8), `launch` est refusé avec la phrase qui donne le chemin
+   (relire, ou monter le seuil) ; le clic du développeur sur « Lancer » passe toujours.
+
+## Le garde-fou suit la cible (POL, 7 novembre)
+
+Le garde-fou suit la cible d'un appel, jamais la fenêtre qui le fait. La conversation principale (le pilote du
+serveur, ou une conversation Claude Code ouverte à la main dans un projet connu) peut tout ce que peut Claude Code ;
+chaque appel d'outil y est jugé par la même règle que les sessions (`lib/policy.mjs`), selon ce qu'il touche.
+
+```
+POST /api/policy/check { project?, cwd, tool, input }      (ouverte en local : elle ne change rien ; lib/gate.mjs la lit comme une lecture)
+  → { decision: 'allow' | 'deny' | 'ask', why, path, target: { kind, root, project, session? }, rule }
+```
+
+`path` dit toujours le chemin qui marche quand la décision n'est pas `allow`. La cible (`lib/policycheck.mjs`) :
+
+| cible | quoi | décision |
+|---|---|---|
+| fichier d'un outil (Read, Edit, Write…) | son chemin | selon la ligne ci-dessous |
+| Bash | son dossier (`cwd`, ou le `cd <dossier> &&` en tête) ; la commande reste opaque | idem |
+| worktree d'une session en cours (`running`, `starting`, `waiting`) | | lecture seule ; écrire → `deny`, « passe-lui la demande dans son Flot ou attends sa fin » |
+| checkout principal d'un projet git (registre des projets) | | écrire → `deny`, chemin : `git worktree add .claude/worktrees/<nom> -b escadrille/fix/<nom>`, tests, `git merge --no-ff` en local ; `.escadrille/` (passation, jamais commitée), `git worktree`, `git branch`, `git merge` et les lectures passent |
+| worktree d'un projet (`.claude/worktrees/<nom>`) | | la règle du projet : `suggest` enraciné dans ce worktree ; un garde-fou d'Escadrille (`lib/policy.mjs`…) → `ask` (revue de Dev) |
+| projet sans git | | la règle du projet |
+| hors de tout projet | | la règle du Mac : ce que `suggest` autorise, `/tmp` libre, le reste `ask` |
+
+Les absolus, avant la cible, partout : **aucun push** (seule exception, personnelle à Dev : la liste du pilote, plus
+bas), **rien ne se poste** (`gh pr comment|merge|create` sans `--draft`, `gh issue`, `gh api` en écriture, un `curl` en
+POST hors de la machine, un connecteur qui écrit : `save_`, `create_`, `send_`…), **rien en production** (`vercel`,
+`npm publish`, `fly deploy`, `docker push`, `terraform apply`, `aws`, `gcloud`, `stripe`…), **aucun secret lu**
+(`.env*` sauf `.env.example`, `~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.config/calmdev`, clés `.pem`/`.key`). Ce que la
+règle refuse aux sessions sans être un absolu (un hôte hors du plan, une écriture hors du dossier) devient `ask` : le
+développeur est là.
+
+**La liste du pilote** (l'exception de CLAUDE.md, jamais un réglage ni un défaut du produit) : un fichier de Dev,
+`~/.config/calmdev/pilot-push`, absent par défaut (donc aucun push). Une ligne par dépôt, le chemin absolu de son
+checkout principal puis les branches permises : `~/Dev/CalmDev dev`, `~/Dev/Harbor ONC-* PRE-* feat/*` (le chemin écrit en entier dans le fichier).
+Lue seulement quand l'appel porte le jeton du pilote ; jamais `--force`, `--all`, `--tags`, `--delete`, ni `main`,
+`master` ou `release*` sauf écrits en toutes lettres. Le pilote note chaque push dans sa passation.
+
+### Le hook (`scripts/policy-hook.mjs`)
+
+Un hook `PreToolUse`, Node 22 sans dépendance : il lit l'appel sur stdin, demande `POST /api/policy/check` au serveur
+local (port 3078, `--port` sinon) avec le jeton du pilote quand il est là (`CALMDEV_PILOT_TOKEN` exporté dans le shell,
+ou le fichier `pilot-token` avec `--pilot`), et répond `permissionDecision` avec la raison et le chemin qui marche.
+**Serveur absent, lent (3 s) ou en erreur : `ask`, jamais `deny`.**
+
+Le pilote du serveur le reçoit d'office (`--settings` de son processus, `--pilot`). Pour une conversation principale
+ouverte à la main, dans `~/.claude/settings.json` (toutes les conversations) ou `<projet>/.claude/settings.local.json`
+(un projet) :
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "node <dépôt calmdev>/scripts/policy-hook.mjs", "timeout": 10 }] }
+    ]
+  }
+}
+```
+
+Ajouter `--pilot` à la commande pour la conversation que Dev tient comme pilote (elle lit alors `pilot-token` et
+peut pousser ce que sa liste permet). `node` doit être Node 22 (sinon le chemin complet,
+`~/.nvm/versions/node/v22.<x>/bin/node`). Une décision `allow` passe sans invite ; `deny` montre la raison
+et le chemin à Claude ; `ask`, l'invite habituelle de Claude Code.
+
+### Direct ou session
+
+Une session coûte au départ **environ 37 000 jetons de contexte avant tout travail** (mesure CTX : médiane du
+premier tour, tous modèles ; `.calmdev/ctx/contexte-sessions.json`) et ce contexte est relu à chaque tour, en cache.
+La conversation principale, elle, garde tout ce qu'elle lit jusqu'à sa passation, et le relit à chaque tour suivant.
+Le seuil se chiffre donc ainsi : en direct, ce qu'une tâche lit s'ajoute une fois au contexte de la conversation ;
+en session, il s'ajoute aux 37 000 jetons de départ. Une tâche qui lit moins de 37 000 jetons coûte moins en direct
+tant qu'elle reste courte ; au-delà, ou quand ses lectures pèseraient sur les tours suivants de la conversation, la
+session gagne. D'où la règle, avec une marge :
+
+- **en direct** : une tâche courte, un correctif, **10 tours au plus** et **moins de 30 000 jetons lus** (une
+  dizaine de fichiers de 300 lignes, à ~10 jetons la ligne) ;
+- **en session** : ce qui est long, parallèle, lit beaucoup ou touche un écran (captures, revue de goût).
+
+La consigne du pilote (`lib/pilot.mjs`, `systemPrompt`) le dit en une ligne.
 
 ## « Plan proposé » et « Lancer »
 

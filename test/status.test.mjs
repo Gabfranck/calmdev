@@ -136,7 +136,8 @@ test('GET /api/status: the four blocks, every limit non mesuré without claude, 
   const proj = tmp('escadrille-status-proj-');
   assert.equal((await fetch(BASE + '/api/status')).status, 400);
   const s = await fetch(BASE + '/api/status?project=' + encodeURIComponent(proj)).then((r) => r.json());
-  assert.deepEqual(Object.keys(s), ['project', 'at', 'now', 'limits', 'claude', 'cost', 'guard', 'pilot']); assert.deepEqual(s.pilot, { present: false, external: false }, 'no pilot: every wait is the developer\'s');
+  assert.deepEqual(Object.keys(s), ['project', 'at', 'now', 'limits', 'claude', 'cost', 'guard', 'unit', 'pilot']);
+  assert.equal(s.unit.unit, 'EUR'); assert.equal(s.unit.week.eurPerPct, null, 'no subscription price set: no euros invented'); assert.deepEqual(s.pilot, { present: false, external: false }, 'no pilot: every wait is the developer\'s');
   assert.deepEqual(s.limits.rows.map((r) => [r.id, r.pct, r.level]), [['fiveHour', null, 'unmeasured'], ['weekly', null, 'unmeasured'], ['model:fable', null, 'unmeasured']], 'every limit said, none invented');
   assert.equal(s.limits.verdict.level, 'ok');
   assert.deepEqual([s.now.running, s.now.waiting, s.now.queued, s.now.rows], [0, 0, 0, []]);

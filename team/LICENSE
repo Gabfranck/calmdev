@@ -1,0 +1,48 @@
+# Escadrille Team License, Version 1.0
+
+Copyright 2026 Gabriel Franck. All rights reserved except as granted below.
+
+## Scope
+
+This license covers the team features of Escadrille: the `team/` directory, `lib/team.mjs` and
+`public/team.js` (the "Team Software"). The rest of Escadrille is licensed under the Functional
+Source License, Version 1.1, MIT Future License, in the `LICENSE` file at the root of the
+repository; that license does not apply to the Team Software.
+
+## Grant
+
+1. **Read, develop and test.** You may read, copy and modify the Team Software, free of charge,
+   to develop, test and evaluate it, and to contribute changes back to us.
+
+2. **Trial.** You may use the Team Software with real work, free of charge, for a trial of 30 days
+   per team.
+
+3. **Production use.** Beyond the trial, using the Team Software requires a valid Escadrille Team
+   subscription and its license key, for a number of seats at least equal to the number of people
+   who use it. The subscription terms are those of the order you placed with us.
+
+## Restrictions
+
+You may not:
+
+1. remove, disable or circumvent the license key check of the Team Software, or help others do so;
+2. sell, sublicense, rent or host the Team Software, or a modified version of it, for others; or
+3. remove or alter any copyright notice or this license.
+
+## Contributions
+
+Contributions to the Team Software are accepted only under a contributor license agreement
+signed with us. Contributions to the rest of Escadrille are governed by its own license.
+
+## Termination
+
+Any use outside this license ends your rights under it automatically. Rights end at the end of
+the subscription period, except the read, develop and test rights of clause 1.
+
+## Disclaimer
+
+THE TEAM SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING WITHOUT LIMITATION WARRANTIES OF FITNESS FOR A PARTICULAR PURPOSE, MERCHANTABILITY,
+TITLE OR NON-INFRINGEMENT. IN NO EVENT WILL WE HAVE ANY LIABILITY TO YOU ARISING OUT OF OR
+RELATED TO THE TEAM SOFTWARE, INCLUDING INDIRECT, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES,
+EVEN IF WE HAVE BEEN INFORMED OF THEIR POSSIBILITY IN ADVANCE.

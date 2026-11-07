@@ -49,7 +49,7 @@ const kinds = () => pushed.map((m) => `${m.data.kind}:${m.to.slice(18, -1)}`);
 test('the guard: 401 from the LAN without a token, pages included; OPTIONS and CORS pass', async () => {
   await until(async () => { try { await mac('/api/plans'); return true; } catch { return false; } });
   assert.match(out, /0 phones? paired, push to http:\/\/127\.0\.0\.1/);
-  for (const p of ['/api/plans', '/', '/plan/x', '/app.css', '/api/phone', '/api/running']) { const r = await remote(p); assert.equal(r.status, 401, p); assert.deepEqual(r.body, { error: 'appairage requis' }); }
+  for (const p of ['/api/plans', '/', '/plan/x', '/app.css', '/api/phone', '/api/running', '/api/pilot/brief?project=/x']) { const r = await remote(p); assert.equal(r.status, 401, p); assert.deepEqual(r.body, { error: 'appairage requis' }); }
   assert.equal((await remote('/api/plan/tel/session/A/answer', null, { id: 'x', allow: true })).status, 401);
   assert.equal((await remote('/api/events?plan=tel&token=nope')).status, 401, 'a bad token on the SSE');
   const o = await fetch(BASE + '/api/plans', { method: 'OPTIONS', headers: { ...REMOTE, origin: 'http://localhost:8081' } });

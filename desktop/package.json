@@ -6,7 +6,8 @@
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
     "dev": "tauri dev",
-    "build:debug": "tauri build --debug --bundles app",
+    "build:debug": "tauri build --debug --bundles app --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
+    "install:app": "sh scripts/install-app.sh",
     "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {

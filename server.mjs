@@ -77,6 +77,9 @@
 //                                          servers: [{ pid, command, port, url, cwd, project? }] (dev apps listening, lsof, 10 s cache),
 //                                          vitals: { mem, cpu, server, claude } (lib/vitals.mjs); a devenv row has urls (environment.health)
 //   POST /api/running/stop                 { kind, plan, session } → { ok }; POST /api/running/stop-all → { ok, stopped }
+//   POST /api/running/stop-orphan          { pid, port } → { ok, stopped: { pid, port, command } }; 409 { error: reason } when not an orphan any more
+//                                          (each entry of servers carries since, orphan, plan?, session?: docs/sessions.md, lib/sessionprocs.mjs)
+//   GET  /api/unit                         (Mac) the single gauge in euros paid (docs/usage-unit.md); POST { planEurMonth?, creditEurPerUsd? } → the same
 //   GET  /api/limits?project=              (Mac) { defaults, mac, project, effective, rows }: the thresholds per limit (docs/limits.md)
 //   POST /api/limits                       (Mac) { scope: 'mac' | 'project', project?, limits: { <key>: { soft, hard, until? } | null } } → the same
 //                                          (until: ISO end date; the previous value is kept and comes back alone at that hour)
@@ -179,20 +182,23 @@
 import { createServer } from 'node:http';
 import { execFile, spawn } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync, statSync, rmSync, realpathSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { openDatabase } from './lib/sqlite.mjs';
 import { randomBytes, randomInt, createHash } from 'node:crypto';
 import { homedir, hostname, networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { summarize as formulaLines, switchTo as formulaSwitch } from './lib/formulas.mjs';
 import * as costing from './lib/costing.mjs'; // phase 11 PX: a task costed in three formulas before it is launched (docs/learning.md)
 import { findBlocks, stripBlocks, validatePlan, validateInstall, validateQuestions, validateState, stopTitle, stopKind, stopFallback } from './lib/blocks.mjs';
-import { startPlanner, startSession, safeEnv, sandboxSettings, validateDomains, sandboxStatus, READ_ONLY_TOOLS } from './lib/planner.mjs';
+import { startPlanner, startSession, safeEnv, sandboxSettings, validateDomains, sandboxStatus, READ_ONLY_TOOLS, SANDBOX_SETTINGS } from './lib/planner.mjs';
 import { joinMessages } from './lib/coalesce.mjs';
 import { withFrugal } from './lib/frugal.mjs';
+import { READ_RULE, SOURCE_RULE, PLANNER_DOCS_RULE, withSkills, decisionsSection } from './lib/sessionctx.mjs'; // LEV: what a session reads, cut to its task
 import { pickTerminal } from './lib/terminal.mjs';
 import * as running from './lib/running.mjs';
 import * as vitalsLib from './lib/vitals.mjs';
 import * as testapps from './lib/testapps.mjs'; // the test apps stop alone (Dev, 6 November)
+import * as sessiondone from './lib/sessiondone.mjs'; // the fixed end date of a session (the one-hour rule, the review brake)
+import * as sessionprocs from './lib/sessionprocs.mjs'; // the servers of a session die with it (docs/sessions.md, 7 November)
 import * as pilotdeath from './lib/pilotdeath.mjs'; // the pilot never dies in silence (Dev, 6 November 21:10)
 import { estimatePlan, usageReport, calibrate, scanTranscripts } from './lib/usage.mjs';
 import { memo, reviewStamp } from './lib/memo.mjs';
@@ -201,6 +207,7 @@ import * as testbox from './lib/testbox.mjs';
 import * as push from './lib/push.mjs';
 import * as poste from './lib/poste.mjs'; // the MacBook that pilots the Studio (docs/studio.md)
 import { accessReport } from './lib/access.mjs';
+import * as signing from './lib/signing.mjs'; // « Avant de signer »: the developer's domains and known leads (docs/apprendre-en-signant.md)
 import * as review from './lib/review.mjs';
 import * as guardrails from './lib/guardrails.mjs'; // the protected guardrails (docs/autonomy.md, phase 10 E)
 import * as mergeprivacy from './lib/mergeprivacy.mjs'; // the private-life net at merge time (lib/privacy.mjs on added lines)
@@ -217,6 +224,7 @@ import { remaining, createQueue, isFinished, planChangeRefusals, holdsSlot } fro
 import * as autonomy from './lib/autonomy.mjs';
 import * as resources from './lib/resources.mjs';
 import * as mainchat from './lib/mainchat.mjs';
+import * as feedback from './lib/feedback.mjs'; // « Retour »: the report shown whole before the developer's click (GET /api/feedback)
 import * as pilotlog from './lib/pilotlog.mjs'; // Phase 8 D
 import * as pilot from './lib/pilot.mjs'; // Phase 8 A
 import { guardFilesArgs, filesOf as guardFiles } from './lib/guardbase.mjs';
@@ -239,11 +247,13 @@ import * as secrets from './lib/secrets.mjs';
 import * as tickets from './lib/tickets.mjs'; // phase 16 TIX: a planning from the project's tickets, read only (docs/connectors.md)
 import { mapOf, architectureDelta } from './lib/architecture.mjs';
 import * as burst from './lib/burst.mjs';
+import * as brake from './lib/brake.mjs'; // FREIN 7 November: the review pace
 import * as backlogmod from './lib/backlog.mjs'; // the backlog page and « Ajouter à un plan » (docs/backlog-page.md)
 import { isStalePlanning } from './lib/waiting.mjs';
 import { horizonOf, weeklyNow } from './lib/horizon.mjs';
 import * as limits from './lib/limits.mjs';
 import * as status from './lib/status.mjs'; // Phase 9 P1, the status panel
+import { unitGauge, validateUnit, rateSamples, modelRates } from './lib/unit.mjs'; // the single unit, euros paid (docs/usage-unit.md)
 import * as registry from './lib/projects.mjs'; // Phase 11 S, the projects given to Escadrille
 import * as game from './lib/game.mjs'; // the progression, docs/game.md
 import { captureTarget, parseCaptures, folderName, captureNote, createCaptureQueue } from './lib/capture.mjs'; // Phase 8 B, docs/capture.md
@@ -256,6 +266,7 @@ import * as qaloop from './lib/qaloop.mjs'; // Phase 13 PIL: the failures go bac
 import * as checks from './lib/checks.mjs'; // Phase 13 PIL: the checks a project declares, run at a stop
 import * as pilotpolicy from './lib/pilotpolicy.mjs'; // Phase 13 PIL: the permission policy of a project
 import * as wake from './lib/wake.mjs'; // Phase 13 PIL: the filter and the Haiku triage of the pilot's wakes
+import * as pilotbrief from './lib/pilotbrief.mjs';
 import * as asks from './lib/asks.mjs'; // « À toi »: the permissions that wait for the developer, explained (docs/asks.md)
 import { mergedInto, targetOf, mergedWaitingOver, staleError, HEALTH_CLEARED } from './lib/mergedin.mjs'; // a branch merged outside the server, and the branch a session is merged into
 import * as pilothandoff from './lib/pilothandoff.mjs'; // Phase 13 PIL: the pilot's handoff
@@ -273,6 +284,7 @@ import { createDemo } from './lib/demo.mjs'; // the live software demo, docs/dem
 import * as comm from './lib/comm.mjs'; // the Communication screen: comm/ of the project, read at every opening
 import * as names from './lib/names.mjs'; // the technical names (calmdev, else escadrille) and their migration, docs/decisions.md 5 Nov 22:30
 const { vars, projectDir, projectRel } = names;
+import * as policycheck from './lib/policycheck.mjs'; // POL: the guardrail follows the target of a call, never the window (docs/pilot.md)
 const { msg } = i18n;
 // CALMDEV_X reaches the readers that only know ESCADRILLE_X (lib/guardrails.mjs), and the config folder moves to
 // ~/.config/calmdev once, a link left at the old path, before anything reads it. A server under node --test leaves the
@@ -307,8 +319,9 @@ const TOKEN_DAYS = 90; const CODE_TTL_MS = 10 * 60000; const CODE_TRIES = 5;
 // Set by the tests only: with it, a request carrying `x-escadrille-remote: 1` counts as coming from the LAN
 const TEST_REMOTE = vars.TEST_REMOTE === '1';
 // A busy timeout: a test or a tool reading the same file holds a shared lock for a moment; without it a write under load
-// throws « database is locked » and the route fails (2026-11-02, the suite merged dry into main)
-const db = new DatabaseSync(DB_FILE, { timeout: 5000 });
+// throws « database is locked » and the route fails (2026-11-02, the suite merged dry into main). Through openDatabase:
+// Node 22.13 ignores the constructor's timeout option (lib/sqlite.mjs).
+const db = openDatabase(DB_FILE);
 db.exec(`
   create table if not exists plans (id text primary key, title text, created text, json text);
   create table if not exists sessions (plan text, id text, status text, stops text, health text, why text, claude text, note text, name text, at text, primary key (plan, id));
@@ -644,7 +657,7 @@ export const TEST_RULES = `Tests et fichiers : jamais de test sous env -i, env -
 export const stateInstruction = (plan, s, wt) => {
   const stops = (s.stops || []).map((t, i) => `  ${i} = ${stopTitle(t)}`).join('\n');
   const where = wt ? ` Tu travailles dans le worktree ${wt.cwd} sur la branche ${wt.branch} : commite là, ne pousse pas, ne fusionne pas (le serveur fusionne quand le développeur le décide).` : '';
-  return `\n\n## Suivi, obligatoire à la fin de chaque tour\n\nTu es lancée par calmdev (plan"${plan.id}", session "${s.id}").${where} Tout accès réseau hors localhost (curl, fetch, git push, npm install…) demande l'autorisation du développeur dans la page, sans exception : demande-la et attends. Termine chaque réponse par ce bloc, une ligne de JSON :\n\n\`\`\`escadrille:state\n{"stops":[0],"health":"ok","why":"","claude":"Regarde … dans …","summary":"Fait : …\\nReste : …","done":false}\n\`\`\`\n\n- stops : les index des arrêts déjà franchis, parmi :\n${stops}\n- health : "ok" si le plan est suivi, "drift" si tu as dévié (dis pourquoi dans why), "error" si quelque chose casse ou bloque ; why : une ligne, sinon "" ;\n- claude : une ligne, ce que le développeur doit regarder et où (chemin complet ou lien), ou ce que tu fais ;\n- summary : deux lignes, ce qui est fait et ce qui reste, pour qui lit la page sans ouvrir ton chat ;\n- done : true seulement quand le prompt est entièrement fini.\n- au dernier tour, done devient {"summary":"3 phrases au plus","journeys":["écran › geste"],"tests":["un test ajouté, 10 mots au plus"],"captures":["${projectRel('captures')}/….png"]} ; captures vide sans écran.\nArrête-toi à chaque arrêt : le développeur lit ta réponse dans la page et te répond là. N'appelle aucune API de calmdev.\n${TEST_RULES}\nL'environnement de dev du projet (Docker, bases, apps) se pilote par une ligne seule sur sa ligne, \`ENV: up\`, \`ENV: down\`, \`ENV: reset\` ou \`ENV: status\` : le serveur exécute la commande que le développeur a déclarée (jamais un texte à toi) et le résultat revient en tête de ton message suivant ; si rien n'est déclaré, une ligne te le dit (docs/devenv.md).\n${docker.INSTRUCTION}\n${gitops.INSTRUCTION}${projectTestsLine(plan)}\nPour jouer des parcours de QA, une ligne \`QA: <chemin de parcours.json>\` dans ton arrêt (format : docs/qarun.md) ; pour photographier une page derrière une connexion, \`CAPTURE: <url> compte=<nom du compte de test>\` ; les mots de passe ne s'écrivent jamais, seuls les noms de comptes. Les échecs te reviennent une fois pour corriger les parcours mal écrits ; les vrais défauts vont au développeur.${wt?.root && guardrails.isEscadrille(wt.root) ? guardrails.instruction() : ''}`;
+  return `\n\n## Suivi, obligatoire à la fin de chaque tour\n\nTu es lancée par calmdev (plan"${plan.id}", session "${s.id}").${where} Tout accès réseau hors localhost (curl, fetch, git push, npm install…) demande l'autorisation du développeur dans la page, sans exception : demande-la et attends. Termine chaque réponse par ce bloc, une ligne de JSON :\n\n\`\`\`calmdev:state\n{"stops":[0],"health":"ok","why":"","claude":"Regarde … dans …","summary":"Fait : …\\nReste : …","done":false}\n\`\`\`\n\n- stops : les index des arrêts déjà franchis, parmi :\n${stops}\n- health : "ok" si le plan est suivi, "drift" si tu as dévié (dis pourquoi dans why), "error" si quelque chose casse ou bloque ; why : une ligne, sinon "" ;\n- claude : une ligne, ce que le développeur doit regarder et où (chemin complet ou lien), ou ce que tu fais ;\n- summary : deux lignes, ce qui est fait et ce qui reste, pour qui lit la page sans ouvrir ton chat ;\n- done : true seulement quand le prompt est entièrement fini.\n- au dernier tour, done devient {"summary":"3 phrases au plus","journeys":["écran › geste"],"tests":["un test ajouté, 10 mots au plus"],"captures":["${projectRel('captures')}/….png"]} ; captures vide sans écran.\nArrête-toi à chaque arrêt : le développeur lit ta réponse dans la page et te répond là. N'appelle aucune API de calmdev.\n${READ_RULE}\n${SOURCE_RULE}\n${TEST_RULES}\nL'environnement de dev du projet (Docker, bases, apps) se pilote par une ligne seule sur sa ligne, \`ENV: up\`, \`ENV: down\`, \`ENV: reset\` ou \`ENV: status\` : le serveur exécute la commande que le développeur a déclarée (jamais un texte à toi) et le résultat revient en tête de ton message suivant ; si rien n'est déclaré, une ligne te le dit (docs/devenv.md).\n${docker.INSTRUCTION}\n${gitops.INSTRUCTION}${projectTestsLine(plan)}\nPour jouer des parcours de QA, une ligne \`QA: <chemin de parcours.json>\` dans ton arrêt (format : docs/qarun.md) ; pour photographier une page derrière une connexion, \`CAPTURE: <url> compte=<nom du compte de test>\` ; les mots de passe ne s'écrivent jamais, seuls les noms de comptes. Les échecs te reviennent une fois pour corriger les parcours mal écrits ; les vrais défauts vont au développeur.${wt?.root && guardrails.isEscadrille(wt.root) ? guardrails.instruction() : ''}${decisionsSection({ prompt: s.prompt, cwd: wt?.cwd || s.path, kind: learning.kindOf(s) })}`;
 };
 // The usage estimate of a plan (docs/estimation.md); a broken transcript never breaks the page
 // The registry of what a project taught (lib/learning.mjs), kept a minute: the estimate and the planner read it often
@@ -694,8 +707,12 @@ const setState = (plan, session, fields) => {
   if (fields.status === 'done' && cur.status !== 'done' && stateOf(plan).every((r) => r.status === 'done')) pushNotice(plan, session, 'done', plan, {});
   // The QA plan of the run (docs/qa.md): a merge or a done may be the last one, however it came (button, tests, auto)
   if ((fields.worktree?.merged && !cur.worktree?.merged) || (fields.status === 'done' && cur.status !== 'done')) setImmediate(() => qaCheck(plan).catch((e) => console.error('qa', e)));
+  // A closure (done, merge): the session's servers die with it (lib/sessionprocs.mjs); a merge of a session already done changes nothing
+  if (fields.status === 'done' && cur.status !== 'done') sessionClosed(plan, session, 'done');
+  else if (fields.worktree?.merged && !cur.worktree?.merged) sessionClosed(plan, session, 'merge');
   return rowOf(plan, session);
 };
+let sessionClosed = () => {}; // set once the closure is defined (closeSoon, further down)
 
 // ---------------------------------------------------------------- the phone (docs/phone.md): devices, pairing, push
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -1112,7 +1129,8 @@ const onSessionEvent = (planId, sid, myGen) => (ev) => {
   if (ev.type === 'init') { if (ev.sessionId && ev.sessionId !== row.sessionId) setState(planId, sid, { sessionId: ev.sessionId }); return; }
   if (ev.type === 'activity') { addSessionMessage(planId, sid, 'activity', ev.text); return; }
   if (ev.type === 'error') { addSessionMessage(planId, sid, 'system', ev.text); setState(planId, sid, { health: 'error', why: tail(ev.text, 120) }); return; }
-  if (ev.type === 'quota') { if (typeof ev.weekly === 'number' && ev.weekly !== row.usage?.weekly) setState(planId, sid, { usage: { ...(row.usage || { input: 0, output: 0, cost: 0, context: null }), weekly: ev.weekly } }); noteWindows(ev); return; }
+  // the first and last weekly reading with the cost at each: the value of a point per model (lib/unit.mjs rateSamples)
+  if (ev.type === 'quota') { if (typeof ev.weekly === 'number' && ev.weekly !== row.usage?.weekly) { const u = row.usage || { input: 0, output: 0, cost: 0, context: null }; const t = now(); const first = u.w0 == null ? { w0: ev.weekly, c0: u.cost || 0, t0: t } : {}; setState(planId, sid, { usage: { ...u, ...first, weekly: ev.weekly, c1: u.cost || 0, t1: t } }); } noteWindows(ev); return; }
   if (ev.type === 'text') L.turnText = (L.turnText || '') + '\n' + ev.text; // Phase 8 B: the CAPTURE: lines of the turn
   if (ev.type === 'text') { const prose = stripBlocks(ev.text); if (prose) { addSessionMessage(planId, sid, 'claude', prose); L.lastText = prose; } return; }
   if (ev.type === 'block') {
@@ -1121,12 +1139,14 @@ const onSessionEvent = (planId, sid, myGen) => (ev) => {
     if (errors) { addSessionMessage(planId, sid, 'system', 'Bloc state illisible : ' + errors.join(' ; ')); return; }
     if (L.stopsBefore === undefined) L.stopsBefore = row.stops || []; // the stops as this turn found them
     L.state = state; L.releases = ev.json.releases; // Phase 10 J: made at the end of the turn
+    if (!state.done) recordSessionSoon(planId, sid); // the servers it started are its own (lib/sessionprocs.mjs); a done closes, and records first
     // A session that leaves a fix to apply by hand is not done until it is applied or handed to the pilot (lib/leftfixes.mjs)
     const left = state.done && row.worktree?.path ? openFixesIn(row.worktree.path) : [];
     const done = !!state.done && !left.length;
     if (left.length) tellFixes(planId, sid, left);
     setState(planId, sid, { stops: state.stops, health: state.health, why: state.why, claude: state.claude, summary: state.summary, ...(done ? { status: 'done' } : {}) });
     if (done && state.report) donethread.saveDone(db, planId, sid, state.report); // Phase 16 PAIR
+    if (state.assume?.length && row.worktree?.path) signing.saveAssume(row.worktree.path, state.assume); // « Avant de signer »
     if (done) onDone(planId, sid).catch((e) => addSessionMessage(planId, sid, 'system', e.message));
     return;
   }
@@ -1220,7 +1240,7 @@ const handoffPath = (row, L) => path.join(row.worktree?.path || L.cwd, HANDOFF_F
 const handoffAsk = (plan, s, L, usage) => {
   const row = rowOf(plan.id, s.id); const n = row.handoffs.length + 1; const file = handoffPath(row, L);
   L.handoff = { n, context: usage.context };
-  const text = `Ton contexte est à ${pct(usage.context)} de la fenêtre : il est temps de passer la main à une session fraîche. Dans ce tour, et rien d'autre :\n1. Écris le fichier ${file} en français, moins de 150 lignes : ce qui est fait, ce qui reste, les fichiers touchés, les pièges rencontrés, les arrêts franchis (leurs index).\n2. Commite ton travail en cours (git add, git commit).\n3. Termine par ton bloc escadrille:state.\nUne session fraîche reprendra sur la même branche avec ce fichier puis ton prompt d'origine.`;
+  const text = `Ton contexte est à ${pct(usage.context)} de la fenêtre : il est temps de passer la main à une session fraîche. Dans ce tour, et rien d'autre :\n1. Écris le fichier ${file} en français, moins de 150 lignes : ce qui est fait, ce qui reste, les fichiers touchés, les pièges rencontrés, les arrêts franchis (leurs index).\n2. Commite ton travail en cours (git add, git commit).\n3. Termine par ton bloc calmdev:state.\nUne session fraîche reprendra sur la même branche avec ce fichier puis ton prompt d'origine.`;
   addSessionMessage(plan.id, s.id, 'system', text);
   setState(plan.id, s.id, { claude: msg('srv.s.handoffAsked', { n, p: pct(usage.context) }) });
   L.proc.send(text);
@@ -1271,7 +1291,8 @@ const startProcess = (plan, s, row, { prompt, lead } = {}) => {
   const resume = prompt ? undefined : row.sessionId || undefined;
   const restored = resume && row.usage?.claude?.id === resume ? Number(row.usage.claude.cost) || 0 : 0;
   const rest = remaining(budgetOf(s), row.usage?.cost); const cap = Number.isFinite(rest) && rest > 0 ? Math.round((rest + restored) * 100) / 100 : rest;
-  const proc = startSession({ cwd, model: s.model, budget: cap, settings: withFrugal(settings), addDirs: [...(Array.isArray(plan.addDirs) ? plan.addDirs.map(String) : []), ...(row.worktree?.linked || [])], resume, onEvent: onSessionEvent(plan.id, s.id, myGen) });
+  // LEV: the session sees the skills of its kind only (lib/sessionctx.mjs: no design, video or logo plugin out of front and design)
+  const proc = startSession({ cwd, model: s.model, budget: cap, settings: withSkills(withFrugal(settings), learning.kindOf(s)), addDirs: [...(Array.isArray(plan.addDirs) ? plan.addDirs.map(String) : []), ...(row.worktree?.linked || [])], resume, onEvent: onSessionEvent(plan.id, s.id, myGen) });
   live.set(keyOf(plan.id, s.id), { proc, cwd, lastText: '', state: null, gen: myGen, costBase: (row.usage?.cost || 0) - restored, restored, handoff: null, since: now() });
   notify('plan:' + plan.id); notify('running');
   if (prompt) proc.send(prompt);
@@ -1422,7 +1443,8 @@ const mergeSession = async (planId, sid, { close = false } = {}) => {
   // The private-life net (lib/mergeprivacy.mjs): main is pushed after each local merge, so a branch whose added lines carry a
   // trace is never merged, whoever asks (the button, the green tests, the review); the merge takes the very commit checked
   if (!wt.merged) { const held = await privacyHold(planId, sid, plan, wt, rev); if (held.error) return held; rev = held.head; }
-  if (!wt.merged && rowOf(planId, sid).review && !rowOf(planId, sid).review.seen) throw new Error('à relire : ' + rowOf(planId, sid).review.files.join(', '));
+  // Files « à relire » not seen yet: the refusal names the way that works (the Revue's approve, or the plan page's button)
+  if (!wt.merged && rowOf(planId, sid).review && !rowOf(planId, sid).review.seen) { const rv = rowOf(planId, sid).review; throw new Error(msg('srv.s.toReviewMerge', { files: rv.files.join(', '), button: msg(rv.guard?.length ? 'plan.guardApprove' : 'plan.seenGo'), plan: planId })); }
   if (!wt.merged) {
     // The review level of the project (docs/review.md): strict, or a guarded domain, waits for an approve
     const gate = await review.mergeAllowed(plan.project || wt.root, planId, sid);
@@ -1487,7 +1509,7 @@ const startProjectQa = async (b) => {
   if (!info || info.next.gesture !== 'startQa') throw Object.assign(new Error('aucune QA groupée prête : une fusion depuis la dernière QA, et plus aucun plan qui tourne'), { status: 409 });
   const date = new Date().toISOString(); const name = path.basename(project); const covered = projectQaInput(project).filter((p) => info.plans.includes(p.id));
   const parts = [];
-  for (const p of covered) { const merges = ((await gitOut(project, ['log', '--format=%h %s', '--fixed-strings', '--grep', `escadrille/${p.id}/`, '-n', '60'])) || '').trim().split('\n').filter(Boolean); parts.push({ plan: p.plan, state: stateOf(p.id), log: logOf(p.id, 2000).reverse(), merges }); }
+  for (const p of covered) { const merges = ((await gitOut(project, ['log', '--format=%h %s', '--fixed-strings', ...names.BRANCH_PREFIXES.flatMap((b) => ['--grep', `${b}${p.id}/`]), '-n', '60'])) || '').trim().split('\n').filter(Boolean); parts.push({ plan: p.plan, state: stateOf(p.id), log: logOf(p.id, 2000).reverse(), merges }); }
   const file = qa.projectQaFile(name, date);
   const draft = { id: `${date.slice(0, 10)}-qa-${name}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-'), title: `QA groupée · ${name} · ${date.slice(0, 10)}`, goal: `Une liste à cocher pour ${covered.length} plan(s) fusionné(s) depuis la dernière QA`, project, network: [],
     sessions: [{ id: qa.QA_SESSION, name: 'La QA groupée du projet', wave: 1, path: project, model: qa.QA_MODEL, budget: qa.QA_BUDGET, where: file, stops: [`La liste écrite dans ${file}`], prompt: qa.projectQaBrief({ name, date, plans: parts, since: info.lastAt, port: PORT }) }] };
@@ -1512,7 +1534,7 @@ const qaCheck = async (planId) => {
   const root = rootOfPlan(plan); if (!root || !existsSync(root)) return null;
   qaStarting.add(planId);
   try {
-    const merges = ((await gitOut(root, ['log', '--format=%h %s', '--fixed-strings', '--grep', `escadrille/${planId}/`, '-n', '60'])) || '').trim().split('\n').filter(Boolean);
+    const merges = ((await gitOut(root, ['log', '--format=%h %s', '--fixed-strings', ...names.BRANCH_PREFIXES.flatMap((b) => ['--grep', `${b}${planId}/`]), '-n', '60'])) || '').trim().split('\n').filter(Boolean);
     const s = qa.qaSession({ plan, state: stateOf(planId), log: logOf(planId, 2000).reverse(), merges, root, port: PORT });
     const { plan: next, errors } = validatePlan(qa.withQa(plan, s), { project: plan.project });
     if (errors) { console.error('qa', errors.join(' ; ')); return null; }
@@ -1688,12 +1710,16 @@ const sessionDiff = async (planId, sid) => {
 const sessionReviewed = async (planId, sid, { key = null, head = null } = {}) => {
   const row = rowOf(planId, sid); if (row.worktree?.merged) throw mergedRefusal(row.worktree); if (!row.review) throw new Error('rien à relire');
   let guardHead = row.review.guardHead;
-  if (guardrails.protectedTouched(row.review.guard || []).length || row.review.privacy) {
-    if (!guardrails.keyMatches(key, GUARD_KEY)) { const e = new Error(msg('srv.s.guardKey', { file: path.join(guardrails.dirOf(), 'guard-link') })); e.status = 403; throw e; }
+  const keyed = guardrails.protectedTouched(row.review.guard || []).length || row.review.privacy;
+  // Every agreement « à relire », a protected file or not (Dev, 7 novembre): the key of the developer's browser, never a
+  // device's Bearer nor the pilot's header; and the commit the client saw, sent by it, never the branch's head taken here
+  if (!guardrails.keyMatches(key, GUARD_KEY)) { const e = new Error(msg('srv.s.guardKey', { file: path.join(guardrails.dirOf(), 'guard-link') })); e.status = 403; throw e; }
+  if (typeof head !== 'string' || !/^[0-9a-f]{40}$/.test(head)) { const e = new Error(msg('srv.s.reviewNoHead')); e.status = 409; throw e; }
+  {
     const wt = row.worktree; const now_ = wt ? (await gitOut(wt.root, ['rev-parse', '--verify', wt.branch + '^{commit}']))?.trim() : null;
     if (!now_) throw new Error('branche introuvable');
-    if (head && head !== now_) { const e = new Error(msg('srv.s.guardMoved')); e.status = 409; throw e; }
-    guardHead = now_;
+    if (head !== now_) { const e = new Error(msg('srv.s.guardMoved')); e.status = 409; throw e; }
+    if (keyed) guardHead = now_;
   }
   setState(planId, sid, { review: { ...row.review, seen: true, seenAt: now(), ...(guardHead ? { guardHead } : {}), ...(row.review.privacy && guardHead ? { privacyHead: guardHead } : {}) }, pending: row.pending.filter((p) => p.kind !== 'review') });
   addSessionMessage(planId, sid, 'system', `Relu : ${row.review.files.join(', ')}.`);
@@ -1724,12 +1750,13 @@ const autoTests = async (planId, sid, cmd, { layout = null, merge = true } = {})
   try {
     const wt = rowOf(planId, sid).worktree; const head = await git(wt.root, ['rev-parse', wt.branch]);
     addSessionMessage(planId, sid, 'system', msg('srv.s.verifyStart', { cmd }) + (layout ? ` (tests déclarés pour ${layout.key}${layout.missing?.length ? ` ; introuvable : ${layout.missing.join(', ')}` : ''})` : ''));
-    const r = await testbox.verifyMerge({ root: wt.root, branch: wt.branch, cmd, timeoutMs: TEST_TIMEOUT_MS, links: layout?.links || [], siblings: layout?.siblings || [] });
+    const r = await testbox.verifyMerge({ root: wt.root, branch: wt.branch, cmd, timeoutMs: TEST_TIMEOUT_MS, links: layout?.links || [], siblings: layout?.siblings || [], known: testbox.loadKnownFailures(wt.root, { tracked: isSelf(wt.root) }) });
     if (r.boxError) { addSessionMessage(planId, sid, 'system', msg('srv.s.noBox', { why: r.boxError })); if (merge) askTests(planId, sid, cmd); return; }
     if (r.conflict) { if (!merge) { addSessionMessage(planId, sid, 'system', msg('srv.s.verifyFailed', { e: 'conflit avec ' + r.files.join(', ') })); return; } const m = await mergeSession(planId, sid); if (m?.conflict) await tellConflict(planId, sid, m.files); return; }
     const end = r.out.trim().split('\n').slice(-20).join('\n');
     addSessionMessage(planId, sid, 'system', `${msg('srv.s.verifyCode', { code: r.code })}${r.killed ? ' (10 min)' : ''}\n${end.slice(-4000)}`);
     if (r.flaky.length) addSessionMessage(planId, sid, 'system', msg('srv.s.flakyGreen', { files: r.flaky.join(', ') }));
+    { const lines = testbox.knownReport(r); if (lines.length) addSessionMessage(planId, sid, 'system', lines.join('\n')); } // known failures of main: said in a line, only the new ones block
     const fresh = rowOf(planId, sid);
     // The branch moved while its tests ran (a new turn): its next done is tested again
     if (fresh.status !== 'done' || fresh.worktree?.merged || (await git(wt.root, ['rev-parse', wt.branch])) !== head) return;
@@ -1828,7 +1855,7 @@ const continueBudget = (planId, sid) => {
   return { ok: true };
 };
 const lastQuota = () => db.prepare('select weekly, reset_at from escadrilles where weekly is not null order by at desc limit 1').get() || null;
-const quotaGuard = (plan) => { if (!autonomyOf(plan).stopAtQuotaLimit) return null; const q = lastQuota(); const why = q && autonomy.quotaRefusal(q.weekly, q.reset_at); return why ? { ok: false, why } : null; };
+const quotaGuard = (plan) => { if (!autonomyOf(plan).stopAtQuotaLimit) return null; const q = lastQuota(); let overage = null; try { overage = newestWindows(statusMeasurer.last())?.overage || null; } catch {} const why = q && autonomy.quotaRefusal(q.weekly, q.reset_at, Date.now(), { overage }); return why ? { ok: false, why } : null; };
 // The plan's cap reached: every process of the plan stops, one 'alert' entry says so
 const checkPlanCap = (planId) => {
   const plan = planOf(planId); const cap = autonomyOf(plan).planCapUsd; if (cap === null) return;
@@ -1934,6 +1961,7 @@ const retirePlan = (planId, why) => {
   }
   if (!already) {
     reapSoon('abandon');
+    for (const r of stateOf(planId)) sessionClosed(planId, r.id, 'abandon');
     const p = planOf(planId); const line = msg('srv.s.retired', { why: p.closedWhy ? ` (${p.closedWhy})` : '', n: stopped.length });
     for (const s of plan.sessions) if (rowOf(planId, s.id)) addSessionMessage(planId, s.id, 'system', line);
     const project = projectOfPlan(planId); if (project) notify('main:' + project);
@@ -2050,11 +2078,15 @@ const runningNow = async () => {
   // on the branch the project is on: dev or the feature branch, read each time), 'other' the rest of the Mac
   const roots = testRoots(); const tRows = testRows(); const rootOf = (cwd) => roots.find((r) => cwd && (cwd === r || cwd.startsWith(r + '/'))) || null;
   const branches = new Map(); const branchOf = async (p) => { if (!p) return null; if (!branches.has(p)) branches.set(p, worktree.currentBranch(p).catch(() => null)); return branches.get(p); };
-  const servers = await Promise.all((await vitalsLib.listeners()).filter((s) => !taken.has(String(s.port))).map(async (s) => {
+  // each server says whether it is an orphan (lib/sessionprocs.mjs, docs/sessions.md « Le contrat »): pid, port, command, cwd, since, role, orphan, plan?, session?
+  let psNow = []; try { psNow = await sessionprocs.psList(); } catch {}
+  const heard = classifyServers(sessionprocs.withPs((await vitalsLib.listeners()).filter((s) => !taken.has(String(s.port))), psNow));
+  const servers = await Promise.all(heard.map(async ({ reason, plan: oPlan, session: oSession, ...s }) => {
     const h = healthPorts.get(String(s.port)); const x = h ? { ...s, project: h.project, url: h.url } : s;
-    if (testapps.isTestCwd(s.cwd, roots)) { const o = testapps.ownerOf(s.cwd, tRows); return { ...x, role: 'test', plan: o?.plan ?? null, session: o?.id ?? null }; }
-    const project = h?.project || rootOf(s.cwd); if (!project) return { ...x, role: 'other' };
-    return { ...x, project, role: 'env', branch: await branchOf(project) };
+    const owner = oPlan ? { plan: oPlan, session: oSession } : {};
+    if (testapps.isTestCwd(s.cwd, roots) || testapps.isVerify(s)) { const o = testapps.ownerOf(s.cwd, tRows); return { ...x, role: 'test', plan: oPlan ?? o?.plan ?? null, session: oSession ?? o?.id ?? null }; }
+    const project = h?.project || rootOf(s.cwd); if (!project) return { ...x, ...owner, role: 'other' };
+    return { ...x, ...owner, project, role: 'env', branch: await branchOf(project) };
   }));
   const vitals = await vitalsLib.vitals({ claude: sessions.length + planners.size + others.length });
   return { ours, others, servers, vitals };
@@ -2092,7 +2124,7 @@ const stopRunning = async ({ kind, plan: planId, session: sid, project } = {}) =
     const dirty = await git(wt.path, ['status', '--porcelain']);
     if (dirty) throw new Error(`le worktree a des changements non commités (${dirty.split('\n').length}) : rien n’est retiré`);
     await worktree.remove({ root: wt.root, path: wt.path });
-    addSessionMessage(planId, sid, 'system', msg('srv.s.wtRemoved', { path: wt.path, branch: wt.branch })); reapSoon('abandon');
+    addSessionMessage(planId, sid, 'system', msg('srv.s.wtRemoved', { path: wt.path, branch: wt.branch })); reapSoon('abandon'); sessionClosed(planId, sid, 'worktree removed');
     notify('plan:' + planId); notify('running'); return { ok: true };
   }
   throw new Error('kind doit être session, devserver, worktree ou devenv');
@@ -2109,19 +2141,85 @@ const stopAllRunning = async () => {
 // The test apps stop alone (lib/testapps.mjs, Dev 6 November): at a merge, an abandon, one hour after the session is done, and at
 // the start for those no session owns. No setting, no button; one line in server.log per app stopped.
 const testRoots = () => { const s = new Set(); try { for (const x of registry.list(PROJECTS_FILE)) if (x.path) s.add(x.path); } catch {} for (const r of db.prepare('select distinct project from plans where project is not null').all()) s.add(r.project); s.add(process.cwd()); return [...s]; };
-const testRows = () => db.prepare('select plan, id, status, at, worktree from sessions').all().map((r) => ({ plan: r.plan, id: r.id, status: r.status, at: r.at, worktree: parse(r.worktree), retired: isRetired(planOf(r.plan)) }));
+// doneAt: the fixed end date (lib/sessiondone.mjs); sessions.at moves with every write and never let the hour pass (BKL, 7 Nov.)
+const testRows = () => { const raw = db.prepare('select plan, id, status, at, worktree from sessions').all(); sessiondone.sync(db, raw); const fixed = sessiondone.all(db);
+  return raw.map((r) => ({ plan: r.plan, id: r.id, status: r.status, at: r.at, doneAt: fixed.get(`${r.plan}/${r.id}`) ?? null, worktree: parse(r.worktree), retired: isRetired(planOf(r.plan)) })); };
 const reapTestApps = async (why = 'sweep') => {
   const rows = testRows(); const roots = testRoots(); let n = 0;
   for (const d of testapps.toStop({ apps: running.devServers(), rows, roots })) { await running.stopDevServer(d.plan, d.session); n++; console.log(`test apps: dev server ${d.plan}/${d.session} stopped (${d.why}, ${why})`); }
   vitalsLib.forgetListeners(); let listening = [];
   try { listening = await vitalsLib.listeners(); } catch {}
-  for (const a of testapps.toStop({ apps: listening, rows, roots })) { try { process.kill(a.pid, 'SIGTERM'); n++; console.log(`test apps: pid ${a.pid} on :${a.port} in ${a.cwd} stopped (${a.why}, ${why})`); } catch (e) { console.log(`test apps: pid ${a.pid} not stopped (${e.code || e.message})`); } }
+  // SIGTERM, then SIGKILL after 3 s to those still up (a server that ignores SIGTERM lived 10 h); never this server
+  const due = testapps.toStop({ apps: listening, rows, roots }).filter((a) => a.pid !== process.pid && a.pid > 1);
+  for (const a of (await sessionprocs.stop(due))) { n++; console.log(`test apps: pid ${a.pid} on :${a.port} in ${a.cwd} stopped (${a.why}, ${why})`); }
+  // the processes of a dead verification suite (escadrille-verify-*, parent gone)
+  try { const dead = sessionprocs.verifyOrphans({ ps: await sessionprocs.psList() }); for (const t of await sessionprocs.stop(dead)) { n++; console.log(`test apps: verification pid ${t.pid} stopped (parent dead, ${why}): ${String(t.command).slice(0, 80)}`); } } catch (e) { console.log(`test apps: ps refused (${String(e.message).split('\n')[0]})`); }
   if (n) { vitalsLib.forgetListeners(); notify('running'); }
   return n;
 };
 const reapSoon = (why) => { if (!TEST_APPS_SWEEP) return; setTimeout(() => reapTestApps(why).catch((e) => console.error('test apps', e.message)), 500).unref(); };
 const TEST_APPS_SWEEP = vars.TEST_APPS_SWEEP !== 'off' && (!process.env.NODE_TEST_CONTEXT || vars.TEST_APPS_SWEEP === 'on'); // a test server never kills on the Mac
 if (TEST_APPS_SWEEP) setInterval(() => reapSoon('sweep'), testapps.SWEEP_MS).unref();
+
+// The servers of a session die with it (lib/sessionprocs.mjs, docs/sessions.md 2026-11-07). Recorded at each end of turn and
+// every 5 minutes; stopped at the closure (done, merge, abandon, worktree removed), never at « Arrêter le processus ».
+// A test server (NODE_TEST_CONTEXT) records and kills only when CLOSE_PROCS=on, and then only the pids of its own base.
+sessionprocs.ensure(db); sessiondone.ensure(db);
+const IN_TEST = !!process.env.NODE_TEST_CONTEXT;
+const CLOSE_PROCS = vars.CLOSE_PROCS !== 'off' && (!IN_TEST || vars.CLOSE_PROCS === 'on');
+let procsWarned = false;
+const procsSnapshot = async () => { try { return await sessionprocs.snapshot(); } catch (e) { if (!procsWarned) console.log(`session servers: ps refused (${String(e.message).split('\n')[0]}): nothing recorded`); procsWarned = true; return null; } };
+const claudePidOf = (planId, sid) => { const L = live.get(keyOf(planId, sid)); return L && !L.proc.exited ? L.proc.pid : null; };
+const recordSessionProcs = async (list) => { // list: [{ plan, session, pid, worktree }]
+  if (!CLOSE_PROCS || !list.length) return 0; const snap = await procsSnapshot(); if (!snap) return 0;
+  return sessionprocs.record(db, sessionprocs.claim({ snap, sessions: IN_TEST ? list.map((s) => ({ ...s, worktree: null })) : list }));
+};
+const recordSessionSoon = (planId, sid) => { if (!CLOSE_PROCS) return; const pid = claudePidOf(planId, sid); const wt = rowOf(planId, sid)?.worktree; setImmediate(() => recordSessionProcs([{ plan: planId, session: sid, pid, worktree: wt && !wt.merged ? wt.path : null }]).catch((e) => console.error('session servers', e.message))); };
+const sweepSessionProcs = () => recordSessionProcs([...live.keys()].map((k) => { const i = k.indexOf('/'); const planId = k.slice(0, i); const sid = k.slice(i + 1); const wt = rowOf(planId, sid)?.worktree; return { plan: planId, session: sid, pid: claudePidOf(planId, sid), worktree: wt && !wt.merged ? wt.path : null }; }));
+if (CLOSE_PROCS) setInterval(() => sweepSessionProcs().catch((e) => console.error('session servers', e.message)), testapps.SWEEP_MS).unref();
+const closing = new Map(); // "plan/session" -> the closure in flight
+const closeSessionProcs = async (planId, sid, why, claudePid = null) => {
+  const row = rowOf(planId, sid); if (!row) return [];
+  const wt = row.worktree?.path || null;
+  const snap = await procsSnapshot(); if (!snap) return [];
+  sessionprocs.record(db, sessionprocs.claim({ snap, sessions: [{ plan: planId, session: sid, pid: claudePid, worktree: IN_TEST ? null : wt }] })); // its claude may still be alive
+  const targets = sessionprocs.closeTargets({ db, plan: planId, session: sid, snap, worktree: IN_TEST ? null : wt, self: process.pid, selfPort: PORT });
+  const stopped = await sessionprocs.stop(targets);
+  sessionprocs.forget(db, planId, sid);
+  for (const t of stopped) console.log(`session servers: pid ${t.pid}${t.port ? ' on :' + t.port : ''} of ${planId}/${sid} stopped (${why})`);
+  if (stopped.length) { addSessionMessage(planId, sid, 'system', msg('system.closeProcsStopped', { list: sessionprocs.listLine(stopped) })); vitalsLib.forgetListeners(); notify('running'); }
+  // the environment belongs to the project: down only when no other session of the same project runs or waits
+  const d = running.devEnvs().find((x) => x.plan === planId && x.session === sid);
+  if (d) {
+    const others = db.prepare("select s.plan, s.id from sessions s join plans p on p.id = s.plan where p.project = ? and s.status in ('running', 'waiting', 'paused')").all(d.project).filter((r) => !(r.plan === planId && r.id === sid));
+    if (!others.length) await stopDevEnv(d.project).catch((e) => console.error('devenv down', e.message));
+  }
+  return stopped;
+};
+const closeSoon = (planId, sid, why) => {
+  if (!CLOSE_PROCS) return; const k = keyOf(planId, sid); const pid = claudePidOf(planId, sid);
+  const prev = closing.get(k) || Promise.resolve();
+  const next = prev.then(() => closeSessionProcs(planId, sid, why, pid)).catch((e) => console.error('session servers', e.message)).finally(() => { if (closing.get(k) === next) closing.delete(k); });
+  closing.set(k, next);
+};
+sessionClosed = (planId, sid, why) => { if (why === 'done') { try { sessiondone.mark(db, planId, sid); } catch (e) { console.error('session_done', e.message); } } closeSoon(planId, sid, why); };
+const sessionRowsForOrphans = () => db.prepare('select plan, id, status, worktree from sessions').all().map((r) => ({ plan: r.plan, id: r.id, status: r.status, worktree: parse(r.worktree) }));
+const classifyServers = (listeners) => sessionprocs.classify({ listeners, rows: sessionprocs.allRows(db), sessions: sessionRowsForOrphans(), envs: running.devEnvs(), roots: testRoots(), self: process.pid, selfPort: PORT });
+// POST /api/running/stop-orphan { pid, port }: recomputed now, never on the word of the page
+const stopOrphan = async ({ pid, port } = {}) => {
+  pid = Number(pid); port = Number(port);
+  if (!Number.isInteger(pid) || pid <= 1 || !Number.isInteger(port)) throw httpError(400, 'pid et port requis');
+  vitalsLib.forgetListeners();
+  const snap = await procsSnapshot(); if (!snap) throw httpError(409, 'not listening');
+  const l = snap.listeners.find((x) => x.pid === pid && x.port === port); if (!l) throw httpError(409, 'not listening');
+  const [c] = classifyServers([l]);
+  if (!c.orphan) throw httpError(409, c.reason);
+  if (IN_TEST && !sessionprocs.allRows(db).some((r) => Number(r.pid) === pid && r.started === l.since)) throw httpError(409, 'not recorded by this test server');
+  await sessionprocs.stop([l]);
+  console.log(`session servers: orphan pid ${pid} on :${port} in ${l.cwd} stopped (the developer's click)`);
+  vitalsLib.forgetListeners(); notify('running');
+  return { ok: true, stopped: { pid, port, command: l.command } };
+};
 
 // ---------------------------------------------------------------- the escadrilles and their planning sessions
 const planners = new Map(); // escadrille id -> the running planner
@@ -2154,7 +2252,7 @@ const resourcesRoute = async (req, res, url) => {
   return json(res, 404, { error: 'route inconnue' });
 };
 const resourcesPromptOf = (project) => { if (!project || !existsSync(project)) return ''; try { return resources.resourcesSection(resourcesFor(project)); } catch { return ''; } };
-const systemPromptFor = (e) => `${SKILL}\n\n## Cette planification\n\nProjet : ${e.project}\nModèle choisi par le développeur : ${modelName(e.model)} (${e.model})\nDate : ${new Date().toISOString().slice(0, 10)}\nLe serveur calmdev tourne sur http://localhost:${PORT} ; tu n'as pas à l'appeler, il lit tes blocs.${memorySection(e.project)}${resourcesPromptOf(e.project)}${templateSection(e.template)}${burstSectionOf(e.id)}${limitsSectionOf(e.project)}${learningSectionOf(e.project)}`;
+const systemPromptFor = (e) => `${SKILL}\n\n## Cette planification\n\nProjet : ${e.project}\nModèle choisi par le développeur : ${modelName(e.model)} (${e.model})\nDate : ${new Date().toISOString().slice(0, 10)}\nLe serveur calmdev tourne sur http://localhost:${PORT} ; tu n'as pas à l'appeler, il lit tes blocs.\n${PLANNER_DOCS_RULE}${memorySection(e.project)}${resourcesPromptOf(e.project)}${templateSection(e.template)}${burstSectionOf(e.id)}${limitsSectionOf(e.project)}${learningSectionOf(e.project)}`;
 
 const escadrilleOf = (id) => { const r = db.prepare('select * from escadrilles where id = ?').get(id); if (!r) return null; return { ...r, install: r.install ? JSON.parse(r.install) : null, usage: r.usage ? JSON.parse(r.usage) : null }; };
 const messagesOf = (id) => db.prepare('select * from messages where escadrille = ? order by seq').all(id).map((m) => ({ ...m, data: m.data ? JSON.parse(m.data) : null }));
@@ -2186,6 +2284,16 @@ const knownProjects = () => {
   return registry.list(PROJECTS_FILE)
     .map((x) => ({ path: x.path, name: registry.displayName(x), recent: recent.has(x.path), via: x.via, added: x.added, last: lastActivity(x.path) }))
     .sort((a, b) => (b.last || b.added || '').localeCompare(a.last || a.added || ''));
+};
+// POL: POST /api/policy/check. The known projects, the worktrees of the sessions that run (read only for anyone else), and
+// the pilot's personal push list (<config>/pilot-push, Dev's file, absent = no push), read at each call
+const POLICY_LIVE = ['running', 'starting', 'waiting'];
+const policyCheckOf = (body = {}, isPilot = false) => {
+  const sessions = db.prepare(`select plan, id, worktree from sessions where worktree is not null and status in (${POLICY_LIVE.map(() => '?').join(', ')})`).all(...POLICY_LIVE)
+    .map((r) => ({ plan: r.plan, session: r.id, path: parse(r.worktree)?.path })).filter((s) => s.path);
+  const dir = names.envVar('GUARD_DIR') || names.configDirIn(homedir());
+  return policycheck.check({ cwd: body.cwd, tool: body.tool, input: body.input, project: body.project, caller: isPilot ? 'pilot' : 'conversation',
+    projects: knownProjects().map((p) => p.path), sessions, pushRules: isPilot ? policycheck.readPushRules(path.join(dir, 'pilot-push')) : [] });
 };
 const projectsAnswer = () => ({ claude: claudeStatus(), projects: knownProjects().map((p) => ({ ...p, escadrilles: db.prepare('select count(*) as n from escadrilles where project = ?').get(p.path).n, plans: db.prepare('select count(*) as n from plans where project = ?').get(p.path).n })), models: listModels().filter((m) => m.available).map(({ id, name }) => ({ id, name })) });
 
@@ -2314,6 +2422,7 @@ const asksNow = (project = null) => {
     for (let r of stateOf(id)) { const dead = !procOf(id, r.id); const stale = (p) => p.kind === 'permission' && dead && Date.now() - Date.parse(p.at) > 12 * 3600e3;
       r = { ...r, pending: (r.pending || []).filter((p) => !stale(p)) };
       if (!r.pending.some((p) => p.kind === 'permission' || p.kind === 'reply') && r.status !== 'waiting') continue;
+      if (asks.closedOrStopped(r, { hasProc: !dead, retired: isRetired(plan) })) continue; // merged, removed, retired or stopped: out of « À toi », back on restart
       const s = (plan.sessions || []).find((x) => x.id === r.id) || {};
       rows.push({ plan: id, session: r.id, sessionName: s.name || r.name || r.id, project: plan.project || null, cwd: r.worktree?.cwd || r.worktree?.path || s.path || null, root: r.worktree?.root || plan.project || null, pending: r.pending, status: r.status, at: r.at || null, human: humanOf(r, s.stops || []) }); } }
   return { ...asks.listOf(rows, { pilotOn: (p) => pilotPresent(p), now: Date.now(), guard: askGuard }), remote: [] };
@@ -2345,11 +2454,11 @@ const runSmall = ({ cwd, model, systemPrompt, budget, prompt, timeoutMs = 180000
 });
 // FIAB 2 (6 November): nextStep for a stored row, with its plan's stops and the project's cran (lib/nextstep.mjs)
 const stepOf = (plan, row = {}) => { const s = plan?.sessions?.find((x) => x.id === row.id) || {}; const on = pilotPresent(plan?.project);
-  return nextStep({ ...row, plan: plan?.id, stops: s.stops || [], delivery: plan?.delivery, autoMerge: plan?.autoMerge }, { id: plan?.project, pilotOn: on, pilotPresent: on, mode: (storedSettings(plan?.project).autonomy || {}).mode }); };
+  return nextStep({ ...row, plan: plan?.id, stops: s.stops || [], delivery: plan?.delivery, autoMerge: plan?.autoMerge, closed: isRetired(plan) }, { id: plan?.project, pilotOn: on, pilotPresent: on, mode: (storedSettings(plan?.project).autonomy || {}).mode }); };
 // The session branches git has in main (`git branch --merged main`), per project, read once per wake
 const pilotMerged = new Map();
 const refreshMerged = (project) => { if (!project || !existsSync(project)) return;
-  gitOut(project, ['branch', '--merged', 'main', '--format=%(refname:short)']).then((out) => { if (out != null) pilotMerged.set(project, out.split('\n').map((l) => l.trim()).filter((b) => b.startsWith('escadrille/'))); }); };
+  gitOut(project, ['branch', '--merged', 'main', '--format=%(refname:short)']).then((out) => { if (out != null) pilotMerged.set(project, out.split('\n').map((l) => l.trim()).filter((b) => names.isSessionBranch(b))); }); };
 const maxSeq = (sql, ...a) => db.prepare(sql).get(...a)?.n || 0;
 const projectPlanIds = (project) => db.prepare('select id from plans where project = ? order by created desc').all(project).map((r) => r.id);
 const pilotCollect = (project) => {
@@ -2440,6 +2549,10 @@ const pilotRule = (project, d) => {
   try { sessionMessage(plan.id, d.session, d.text, { pilot: true, triage: true }); } catch (e) { return { ok: false, why: e.message }; }
   return { ok: true, text: d.text };
 };
+// POL: the pilot's settings, the sandbox of every planner plus the policy hook (its token read by the hook from the pilot-token
+// file, --pilot: the pilot's environment drops every *TOKEN* variable)
+const POLICY_HOOK = path.join(HERE, 'scripts', 'policy-hook.mjs');
+const pilotProcSettings = () => { const s = withFrugal(SANDBOX_SETTINGS); return { ...s, hooks: { ...s.hooks, PreToolUse: [...(s.hooks?.PreToolUse || []), { matcher: '*', hooks: [{ type: 'command', command: `"${process.execPath}" "${POLICY_HOOK}" --pilot --port ${PORT}`, timeout: 10 }] }] } }; };
 // The pilot itself, on its model: one process per wake, resumed by --resume until a handoff, fresh after one
 const pilotSpawn = (project, planned = {}) => {
   const p = pilotOf(project); const { budget, daily } = pilotCaps(project);
@@ -2469,7 +2582,9 @@ const pilotSpawn = (project, planned = {}) => {
   try {
     const head = !p.sessionId && p.handoff ? pilothandoff.freshPrompt(p.handoff) : ''; // a fresh pilot starts from the handoff; the wake prompt carries the memory and the plans
     if (head) setPilot(project, { handoff: null });
-    const proc = startPlanner({ cwd: project, model: pilotModel(storedSettings(project).pilotModel), systemPrompt: pilot.systemPrompt({ project, port: PORT }) + memorySection(project), resume: p.sessionId || undefined, budget: Math.min(budget, Math.max(0.01, daily - pilot.spentToday(p))), onEvent });
+    // POL: the pilot is no longer read-only by construction; each call beyond the reads goes through POST /api/policy/check
+    // (scripts/policy-hook.mjs, PreToolUse), judged by its target like any main conversation; still in the sandbox, no network
+    const proc = startPlanner({ cwd: project, model: pilotModel(storedSettings(project).pilotModel), systemPrompt: pilot.systemPrompt({ project, port: PORT }) + memorySection(project), resume: p.sessionId || undefined, budget: Math.min(budget, Math.max(0.01, daily - pilot.spentToday(p))), settings: pilotProcSettings(), onEvent });
     pilotProcs.set(project, { proc, cur }); pilotDoing.set(project, { what: 'un tour du pilote', since: now() }); pilotNotes.delete(project);
     for (const k of [...ruleStreak.keys()]) if (projectOfPlan(k.split('/')[0]) === project) ruleStreak.delete(k); // the pilot judged: the rules may run again
     return head ? { send: (t) => proc.send(head + t) } : proc;
@@ -2480,7 +2595,10 @@ const pilotSpawn = (project, planned = {}) => {
 const pilotHandoffDone = (project, cur) => {
   const { n, why } = cur.handoff; const text = pilothandoff.parseHandoff(cur.handoffText.join('\n')) || 'Passation vide : le pilote n’a rien écrit.';
   const file = pilothandoff.handoffFile(project);
-  try { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text + '\n'); } catch (e) { pilotSay(project, 'system', 'Passation du pilote non écrite : ' + e.message); }
+  try {
+    const w = pilothandoff.writeHandoff(project, text);
+    if (!w.ok) { pilotSay(project, 'system', w.reason + '.'); pilotNote(project, w.reason + '.'); return; } // refused: the old handoff stays, the pilot keeps its process
+  } catch (e) { pilotSay(project, 'system', 'Passation du pilote non écrite : ' + e.message); }
   setPilot(project, { sessionId: null, handoffs: n, handoff: { n, at: now(), text } });
   pilotRecord({ project, kind: 'note', text: `Passation du pilote n°${n} (${why})\n${file}` });
   pilotSay(project, 'system', `Passation du pilote n°${n} (${why}) : le prochain réveil repart d’un processus neuf avec ${file}.`);
@@ -2615,6 +2733,11 @@ const pilotAct = (project, a, cur) => {
   }
   return { refused: 'action inconnue' };
 };
+// The review pace brake (lib/brake.mjs): the finished deliveries not reviewed against the project's threshold (Accès)
+const brakeNow = (project) => brake.brakeCheck({ count: brake.unreviewedCount(db, project), threshold: brake.brakeOf(storedSettings(project)) });
+// the sentence in the thread once per state (the auto mode and the burst tick would repeat it every few minutes)
+const brakeSaid = new Map();
+const brakeSay = (project, why) => { if (brakeSaid.get(project) === why) return; brakeSaid.set(project, why); pilotSay(project, 'system', why); };
 const pilotAccept = async (b, { by = 'dev' } = {}) => {
   const project = projectArg(b.project); const m = db.prepare('select * from main_messages where project = ? and seq = ?').get(project, Number(b.seq));
   const data = parse(m?.data, null); const prop = data?.proposal;
@@ -2622,6 +2745,7 @@ const pilotAccept = async (b, { by = 'dev' } = {}) => {
   if (by === 'pilot' && prop.network?.length) throw new Error('un plan avec des domaines attend le clic de Dev');
   const plan = planOf(prop.planId); if (!plan || plan.project !== project) throw new Error('plan introuvable');
   if (by === 'pilot') { const c = pilot.planCapCheck({ cost: Math.max(Number(prop.estimate?.cost) || 0, sumBudgets(plan)) || null, cap: storedSettings(project).pilotPlanCapUsd }); if (!c.ok) throw new Error(c.why); } // PIL 6 November
+  if (by === 'pilot') { const c = brakeNow(project); if (!c.ok) throw new Error(c.why); } // FREIN 7 November: the review pace, the developer's click stays open
   pilot.setProposalStatus(db, m.seq, 'launched'); // first, so a double click launches once
   let r; try { r = await launch({ plan: plan.id }); } catch (e) { pilot.setProposalStatus(db, m.seq, 'proposed'); throw e; }
   const n = r.launched.length + r.queued.length; const cost = prop.estimate?.cost ?? prop.estimate?.budget ?? sumBudgets(plan);
@@ -2706,7 +2830,7 @@ const pilotSettings = (b) => {
 // The thresholds: the Mac's (project_settings row '*'), else the defaults; a project may only be stricter.
 const MAC_KEY = '*';
 let streamWindows = null;
-const noteWindows = (ev) => { if (!ev.windows) return; streamWindows = { at: now(), weekly: ev.windows.weekly, fiveHour: ev.windows.fiveHour, models: ev.windows.models || {} }; setImmediate(limitsTick); };
+const noteWindows = (ev) => { if (!ev.windows) return; streamWindows = { at: now(), weekly: ev.windows.weekly, fiveHour: ev.windows.fiveHour, models: ev.windows.models || {}, overage: ev.windows.overage || streamWindows?.overage || null }; setImmediate(limitsTick); };
 const newestWindows = (measured) => { const a = measured || null; const b = streamWindows; if (!a || !b) return a || b; const [n, o] = String(a.at) >= String(b.at) ? [a, b] : [b, a]; return { ...status.mergeWindows(n, o), at: n.at }; };
 // The base's weekly share is dated by the row's last change, not by the reading: once this server has read a stream,
 // that reading is the newest (every event passes here), so the base speaks only before the first one
@@ -2894,8 +3018,16 @@ const sweepLimits = () => {
     notify('settings');
   }
 };
-const limitsOf = (project) => { try { sweepLimits(); } catch (e) { console.error('limits until', e); } const rows = project ? limitRowsNow(project) : []; return { defaults: limits.DEFAULTS, mac: macLimits(), project: project ? storedSettings(project).limits || {} : null, effective: thresholdsOf(project), rows, share: project ? { max: shareMaxOf(project), soft: limits.SHARE_SOFT, row: rows.find((r) => r.id === 'share') || null } : null }; };
+const limitsOf = (project) => { try { sweepLimits(); } catch (e) { console.error('limits until', e); } const rows = project ? limitRowsNow(project) : []; return { defaults: limits.DEFAULTS, mac: macLimits(), project: project ? storedSettings(project).limits || {} : null, effective: thresholdsOf(project), rows, share: project ? { max: shareMaxOf(project), soft: limits.SHARE_SOFT, row: rows.find((r) => r.id === 'share') || null } : null, brake: project ? { max: storedSettings(project).reviewBrake ?? null, threshold: brake.brakeOf(storedSettings(project)), count: brake.unreviewedCount(db, project), default: brake.DEFAULT_BRAKE } : null }; };
 const saveLimits = (b) => {
+  if (b.brake !== undefined) { // FREIN: { project, brake: n | null }, the review pace threshold (null: the default, 8)
+    const key = projectArg(b.project); if (!key) throw new Error('brake : un projet');
+    const { value, errors } = brake.validateBrake(b.brake); if (errors) throw new Error(errors.join(' ; '));
+    const st = storedSettings(key); if (value == null) delete st.reviewBrake; else st.reviewBrake = value;
+    db.prepare('insert into project_settings (project, json, at) values (?, ?, ?) on conflict(project) do update set json = excluded.json, at = excluded.at').run(key, JSON.stringify(st), now());
+    brakeSaid.delete(key); notify('settings');
+    return { ok: true, ...limitsOf(key) };
+  }
   if (b.share !== undefined) {
     const key = projectArg(b.project); if (!key) throw new Error('share : un projet');
     const { value, errors } = limits.validateShare(b.share); if (errors) throw new Error(errors.join(' ; '));
@@ -2967,13 +3099,38 @@ const retiredFilesOf = (pf) => { const dir = path.join(PLANS_DIR, 'retired'); if
 const withRetiredFiles = (pf, f) => { const known = new Set(f.retired.map((p) => p.id)); return { ...f, retired: [...f.retired, ...retiredFilesOf(pf).filter((p) => !known.has(p.id))] }; };
 const flowNow = (pf, all = false) => memo(`flow:${pf}:${all}`, changes, 5e3, () => { let calibration = null; try { calibration = estimateOf({ sessions: [] })?.calibration ?? null; } catch {} return { ...withRetiredFiles(pf, flowOf(db, pf, { all, defaultBudget: DEFAULT_BUDGET_USD, calibration, pilot: pilotPresent(pf), mode: (storedSettings(pf).autonomy || {}).mode })), qa: projectQaOf(pf) }; });
 const transcriptsNow = () => memo('transcripts', 0, 10e3, () => scanTranscripts({ db }));
+// ---------------------------------------------------------------- the single unit (docs/usage-unit.md, lib/unit.mjs)
+// Money really paid: the subscription price and the credit price are Mac settings (project_settings '*', key unit),
+// never guessed; the value of a point per model comes from the sessions that ran alone.
+const unitSettings = () => storedSettings(MAC_KEY).unit || {};
+const unitRuns = () => {
+  const out = [];
+  try { for (const r of db.prepare("select plan, id, usage from sessions where usage like '%\"w0\":%' order by at desc limit 400").all()) {
+    const u = parse(r.usage); if (!u || u.t0 == null || u.t1 == null) continue;
+    out.push({ id: r.plan + '/' + r.id, model: planOf(r.plan)?.sessions.find((s) => s.id === r.id)?.model || null, from: u.t0, to: u.t1, w0: u.w0, w1: u.weekly, c0: u.c0, c1: u.c1 });
+  } } catch {}
+  return out;
+};
+const unitNow = () => {
+  const m = newestWindows(statusMeasurer.last());
+  const claude = status.limitsOf({ quota: quotaNow(), measured: m });
+  return unitGauge({ unit: unitSettings(), usdPerPct: dollarsPerPctNow(), rates: modelRates(rateSamples(unitRuns())), claude, credits: m?.credits || null, overage: m?.overage || null });
+};
+const saveUnit = (b) => {
+  const { value, errors } = validateUnit(b || {}); if (errors) throw new Error(errors.join(' ; '));
+  const st = storedSettings(MAC_KEY); const u = { ...(st.unit || {}) };
+  for (const [k, v] of Object.entries(value)) { if (v == null) delete u[k]; else u[k] = v; }
+  st.unit = u;
+  db.prepare('insert into project_settings (project, json, at) values (?, ?, ?) on conflict(project) do update set json = excluded.json, at = excluded.at').run(MAC_KEY, JSON.stringify(st), now());
+  notify('settings'); return { ok: true, ...unitNow() };
+};
 const statusNow = (project) => {
   const plans = plansList(project).map((pr) => { const p = planOf(pr.id) || {}; return { id: pr.id, title: pr.title, created: pr.created, network: p.network, autoMerge: p.autoMerge, capUsd: p.sessions ? planCapOf(p) : null, state: statesOf(pr.id) }; });
   let flow = { nodes: [], plans: [] }; try { flow = flowNow(project); } catch {}
   for (const p of plans) p.status = flow.plans.find((x) => x.id === p.id)?.status || (p.state.length ? 'running' : 'todo');
   let sessions = []; try { sessions = transcriptsNow(); } catch {}
   const m = statusMeasurer.read();
-  return { ...status.statusOf({ project, sessions, quota: quotaNow(), measure: { ...m, last: newestWindows(m.last) }, thresholds: thresholdsOf(project), share: shareOf(project, status.limitsOf({ quota: quotaNow(), measured: newestWindows(m.last) })), nodes: flow.nodes, plans, autonomy: projectAutonomyOf(project), network: projectNetwork(project), burst: burst.burstsOf(db, project)[0] || null, dollarsPerPct: calibrationNow()?.dollarsPerPct ?? null }), pilot: { present: pilotPresent(project), external: presence.external(project) } };
+  return { ...status.statusOf({ project, sessions, quota: quotaNow(), measure: { ...m, last: newestWindows(m.last) }, thresholds: thresholdsOf(project), share: shareOf(project, status.limitsOf({ quota: quotaNow(), measured: newestWindows(m.last) })), nodes: flow.nodes, plans, autonomy: projectAutonomyOf(project), network: projectNetwork(project), burst: burst.burstsOf(db, project)[0] || null, dollarsPerPct: calibrationNow()?.dollarsPerPct ?? null }), unit: (() => { try { return unitNow(); } catch { return null; } })(), pilot: { present: pilotPresent(project), external: presence.external(project) } };
 };
 const taskCost = (t) => (t.escadrille ? escadrilleOf(t.escadrille)?.usage?.cost || 0 : 0) + (t.plan ? statesOf(t.plan).reduce((a, r) => a + (r.usage?.cost || 0), 0) : 0);
 const burstSpent = (b) => Math.round(b.tasks.reduce((a, t) => a + taskCost(t), 0) * 100) / 100;
@@ -3062,6 +3219,9 @@ const burstStep = async (id) => {
     if (min > burst.REVIEW_MAX_MIN) { const w = `En attente : ${Math.round(min / 60)} h de revue en file`; if (b.log[b.log.length - 1]?.text !== w) burst.logLine(b, w); return burstSave(b); }
     const next = b.tasks.find((t) => t.status === 'todo' && !t.note);
     if (!next) return burstEnd(b, 'done', 'Rafale finie : toutes les tâches passées');
+    // FREIN (Dev, 7 Nov.): too many finished deliveries not reviewed, the burst waits; the sentence once, in the log and the thread
+    const bk = brakeNow(b.project);
+    if (!bk.ok) { if (b.log[b.log.length - 1]?.text !== bk.why) { burst.logLine(b, bk.why); brakeSay(b.project, bk.why); } return burstSave(b); }
     burstStartTask(b, next);
   }
   return burstSave(b);
@@ -3119,6 +3279,7 @@ const backlogTick = (project, planId, sid) => { try { const text = backlogText(p
 const startBurst = (b0) => {
   const project = projectArg(b0.project);
   if (burst.activeBursts(db).some((x) => x.project === project)) { const e = new Error(msg('srv.e.burstRunning')); e.code = 409; throw e; }
+  { const bk = brakeNow(project); if (!bk.ok) { brakeSay(project, bk.why); const e = new Error(bk.why); e.code = 409; throw e; } } // FREIN 7 November
   const backlog = burst.readBacklog(project); if (!backlog.exists) throw new Error('pas de docs/backlog.md');
   const wanted = Array.isArray(b0.tasks) ? b0.tasks.map(Number) : backlog.tasks.filter((t) => !t.done).map((t) => t.n);
   const tasks = backlog.tasks.filter((t) => wanted.includes(t.n) && !t.done).map((t) => ({ n: t.n, text: t.text, status: 'todo', escadrille: null, plan: null, cost: 0 }));
@@ -3279,6 +3440,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/escadrilles') { const pf = projectFilter(url); const t = Date.now(); return json(res, 200, db.prepare('select id, title, project, model, status, plan_id, created, at from escadrilles where (? is null or project = ?) order by at desc').all(pf, pf).map((e) => (isStalePlanning(e, t) ? { ...e, stale: true } : e))); }
     if (url.pathname === '/api/project/horizon' && req.method === 'GET') return json(res, 200, horizonNow(projectArg(url.searchParams.get('project'))));
     if (url.pathname === '/api/limits/resume' && req.method === 'POST') { try { return json(res, 200, resumeAll(projectArg((await readBody(req)).project))); } catch (e) { return json(res, 400, { error: e.message }); } }
+    if (url.pathname === '/api/unit') { if (req.method === 'POST') { try { return json(res, 200, saveUnit(await readBody(req))); } catch (e) { return json(res, 400, { error: e.message }); } } return json(res, 200, unitNow()); }
     if (url.pathname === '/api/limits') { if (req.method === 'POST') { try { return json(res, 200, saveLimits(await readBody(req))); } catch (e) { return json(res, 400, { error: e.message }); } } return json(res, 200, limitsOf(projectFilter(url))); }
     if (url.pathname === '/api/status' && req.method === 'GET') { const pf = projectFilter(url); if (!pf) return json(res, 400, { error: 'project manquant' }); return json(res, 200, statusNow(pf)); }
     if (url.pathname === '/api/project/backlog/doc' && req.method === 'GET') return json(res, 200, backlogDoc(projectArg(url.searchParams.get('project'))));
@@ -3291,6 +3453,13 @@ const server = createServer(async (req, res) => {
     if (seg[0] === 'api' && seg[1] === 'burst' && seg[2]) { const id = decodeURIComponent(seg[2]); if (seg[3] === 'stop' && req.method === 'POST') return json(res, 200, burstStop(id)); const b = burst.burstOf(db, id); return b ? json(res, 200, b) : json(res, 404, { error: 'rafale inconnue' }); }
     // One line of the project's list: { project, host, scope? } adds it or changes its scope (no scope: its default),
     // { project, host, remove: true } takes it out (docs/access.md, « Domaines »)
+    // « Avant de signer »: the domains the developer signs alone (declared once, Accès) and « Je connais »; on the Mac, all projects
+    if (url.pathname === '/api/signing' && req.method === 'GET') return json(res, 200, { ...signing.readProfile(), labels: signing.DOMAIN_LABEL, all: signing.DOMAINS, recommended: signing.RECOMMENDED });
+    if (url.pathname === '/api/signing' && req.method === 'POST') {
+      const b = await readBody(req); const patch = {};
+      if ('domains' in b) patch.domains = b.domains; if (typeof b.know === 'string') patch.know = b.know.slice(0, 120); if (typeof b.unknow === 'string') patch.unknow = b.unknow.slice(0, 120);
+      return json(res, 200, signing.writeProfile(patch));
+    }
     if (url.pathname === '/api/project/domain' && req.method === 'POST') {
       const b = await readBody(req); const project = projectArg(b.project); const host = String(b.host || '').trim().toLowerCase();
       const cur = projectNetwork(project); const line = b.scope ? { host, scope: b.scope } : host;
@@ -3302,8 +3471,23 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/architecture' && req.method === 'GET') { const t = await archTarget(url); return json(res, 200, await mapOf(t.repo, t.head)); }
     if (url.pathname === '/api/architecture/delta' && req.method === 'GET') { const t = await archTarget(url); if (!t.base) throw new Error('base et head sont requis'); return json(res, 200, await architectureDelta(t)); }
     if (url.pathname === '/api/game' && req.method === 'GET') { const pf = projectFilter(url); const st = pf ? storedSettings(pf) : {}; if (!game.gameOn(st)) return json(res, 200, { off: true }); const plan = url.searchParams.get('plan'); return json(res, 200, { ...game.levelOf(db, { project: pf, rulesFile: game.rulesFileOf(pf), defaultBudget: DEFAULT_BUDGET_USD, reviewLevel: st.review || review.DEFAULT_LEVEL }), plan: plan ? game.planXp(db, plan, { defaultBudget: DEFAULT_BUDGET_USD }) : null }); }
+    if (url.pathname === '/api/pilot/brief' && req.method === 'GET') { // the pilot's ten lines (lib/pilotbrief.mjs): read-only, same rights as /api/running
+      const pf = projectFilter(url); if (!pf) return json(res, 400, { error: 'project manquant' });
+      const listed = asksNow(pf); const b = pilotbrief.briefOf({ nodes: flowNow(pf).nodes, alive: (p, s) => !!procOf(p, s), permissions: pilotbrief.permissionsOf(listed), count: listed.count });
+      if (/application\/json/.test(req.headers.accept || '')) return json(res, 200, { project: pf, sessions: b.sessions, count: b.count });
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...cors(req) }); return res.end(b.text);
+    }
     if (url.pathname === '/api/asks' && req.method === 'GET') return json(res, 200, asksNow(projectFilter(url))); // « À toi », docs/asks.md
     if (url.pathname === '/api/access' && req.method === 'GET') return json(res, 200, accessOf(projectFilter(url)));
+    // « Retour » (lib/feedback.mjs): counts from the base, the cleaned errors of server.log; no name, path, prompt nor code
+    if (url.pathname === '/api/feedback' && req.method === 'GET') {
+      const ver = (() => { try { return JSON.parse(readFileSync(path.join(HERE, 'package.json'), 'utf8')).version || null; } catch { return null; } })();
+      const hash = await new Promise((ok) => execFile('git', ['-C', HERE, 'rev-parse', '--short', 'HEAD'], { timeout: 3000 }, (e, out) => ok(e ? null : String(out).trim())));
+      const ctx = feedback.contextOf(knownProjects().map((p) => p.path));
+      const logFile = [process.env.ESCADRILLE_SERVER_LOG, path.join(HERE, 'server.log'), path.join(homedir(),'Library/Logs/ai.calmdev.desktop/server.log')].find((f) => f && existsSync(f));
+      const f = feedback.facts({ plans: db.prepare('select count(*) n from plans').get().n, sessions: db.prepare('select usage, worktree, stops, session_id from sessions').all() });
+      return json(res, 200, { report: feedback.report({ version: [ver, hash].filter(Boolean).join(' · ') || '—', facts: f, errors: logFile ? feedback.logErrors(feedback.readTail(logFile), ctx) : [] }) });
+    }
     if (url.pathname === '/api/projectflow' && req.method === 'GET') { const pf = projectFilter(url); if (!pf) return json(res, 400, { error: 'project manquant' }); return json(res, 200, { ...flowNow(pf, url.searchParams.get('all') === '1'), pilot: { present: pilotPresent(pf) }, pause: pauseSummaryOf(pf) }); }
     // the logo of a known project, read in its folder (lib/projectlogo.mjs), never a file outside it; 404 when none
     if (/^\/(comm|api\/comm(\/file)?)$/.test(url.pathname)) return await comm.route(req, res, url, { db, publicDir: PUBLIC, plansDir: PLANS_DIR, known: (p) => knownProjects().some((x) => x.path === p) });
@@ -3333,6 +3517,8 @@ const server = createServer(async (req, res) => {
       return json(res, 404, { error: 'not found' });
     }
     if (url.pathname === '/api/memory') return json(res, 200, req.method === 'POST' ? addMemory(await readBody(req)) : memoryOf(projectArg(url.searchParams.get('project'))));
+    // POL (docs/pilot.md, « Le garde-fou suit la cible »): the rule of a main conversation's call, by its target; it changes nothing
+    if (url.pathname === '/api/policy/check' && req.method === 'POST') return json(res, 200, policyCheckOf(await readBody(req).catch(() => ({})), gate.tokenMatches(req.headers[gate.PILOT_HEADER], PILOT_TOKEN)));
     // Escadrille en équipe (docs/team.md): the setting (the developer's cookie to write it, the token never returned), the status, the others, the collisions
     if (url.pathname === '/api/team') return json(res, 200, req.method === 'POST' ? writeTeam(await readBody(req), { guardKey: guardrails.keyFromCookie(req.headers.cookie) }) : teamView(projectArg(url.searchParams.get('project'))));
     // The Escadrille Équipe key (docs/vente/licence.md): checked offline; written by the developer's cookie only, never returned
@@ -3385,7 +3571,9 @@ const server = createServer(async (req, res) => {
         if (seg[3] === 'comment' && !seg[4]) return json(res, 200, await review.addComment(rid, b));
         if (seg[3] === 'comment' && seg[4] && seg[5] === 'resolve') return json(res, 200, review.resolveComment(rid, seg[4], b));
         if (seg[3] === 'viewed') return json(res, 200, await review.setViewed(rid, b));
-        if (seg[3] === 'submit') return json(res, 200, await review.submit(rid, b));
+        // The guard key comes from the page's cookie alone, never from the body: a device, the pilot or a session has none
+        const key = guardrails.keyFromCookie(req.headers.cookie);
+        if (seg[3] === 'submit') return json(res, 200, await review.submit(rid, b, { key }));
         // The page's per-item decision (a file, a doc, an image, a plan: Accepter, Refuser, Relancer) mapped onto the
         // review's verdict (2026-11-02: the page called /decide since phase 7, the route never existed, the click did nothing)
         if (seg[3] === 'decide') {
@@ -3393,7 +3581,7 @@ const server = createServer(async (req, res) => {
           if (action === 'reopen') return json(res, 200, { ok: true, reopened: true });
           const verdict = { accept: 'approve', reject: 'reject', retry: 'retry' }[action]; if (!verdict) return json(res, 400, { error: 'action : accept, reject, retry' });
           const reason = String(b.reason || '').trim();
-          return json(res, 200, await review.submit(rid, { verdict, body: verdict === 'approve' ? reason : where + (reason || (verdict === 'retry' ? 'Relance demandée par le développeur.' : '')) }));
+          return json(res, 200, await review.submit(rid, { verdict, head: b.head, body: verdict === 'approve' ? reason : where + (reason || (verdict === 'retry' ? 'Relance demandée par le développeur.' : '')) }, { key }));
         }
         return json(res, 404, { error: 'not found' });
       } catch (e) { return json(res, e.status || 400, { error: e.message }); }
@@ -3453,13 +3641,14 @@ const server = createServer(async (req, res) => {
       if (seg[3] === 'retire' && req.method === 'POST') { const b = await readBody(req).catch(() => ({})); return json(res, 200, retirePlan(id, typeof b?.why === 'string' ? b.why : '')); }
       if (seg[3] === 'reopen' && req.method === 'POST') return json(res, 200, reopenPlan(id));
       if (seg[3] === 'story' && req.method === 'POST') return json(res, 200, writeStory(plan));
-      if (!seg[3]) { const estimate = estimateOf(plan); return json(res, 200, { plan: withInstruction(plan), state: stateOf(id), log: logOf(id), estimate, formulas: formulaLines(plan, { defaultBudget: (plan.project && storedSettings(plan.project).budget) || DEFAULT_BUDGET_USD, dollarsPerPct: estimate?.calibration?.calibrated ? estimate.calibration.dollarsPerPct : num(vars.DOLLARS_PER_PCT, null) }), metrics: planMetrics({ db, planId: id }) }); }
+      if (!seg[3]) { const estimate = estimateOf(plan); return json(res, 200, { plan: withInstruction(plan), state: stateOf(id).map((r) => ({ ...r, next: stepOf(plan, r) })), log: logOf(id), estimate, formulas: formulaLines(plan, { defaultBudget: (plan.project && storedSettings(plan.project).budget) || DEFAULT_BUDGET_USD, dollarsPerPct: estimate?.calibration?.calibrated ? estimate.calibration.dollarsPerPct : num(vars.DOLLARS_PER_PCT, null) }), metrics: planMetrics({ db, planId: id }) }); }
       return json(res, 404, { error: 'not found' });
     }
     if (url.pathname === '/api/running' && req.method === 'GET') { const pf = projectFilter(url); const r = await runningNow(); return json(res, 200, pf ? { ...r, ours: r.ours.filter((o) => o.project === pf) } : r); }
     if (url.pathname.startsWith('/api/running/') && req.method === 'POST') {
       if (url.pathname === '/api/running/stop') return json(res, 200, await stopRunning(await readBody(req)));
       if (url.pathname === '/api/running/stop-all') return json(res, 200, await stopAllRunning());
+      if (url.pathname === '/api/running/stop-orphan') { try { return json(res, 200, await stopOrphan(await readBody(req))); } catch (e) { return json(res, e.status || 400, { error: e.message }); } }
     }
     if (url.pathname === '/api/learning' && req.method === 'GET') { let project; try { project = projectArg(url.searchParams.get('project')); } catch (e) { return json(res, 400, { error: e.message }); } learnedCache.delete(project); return json(res, 200, learning.learningReport({ db, project, running: distilling.has(project) })); }
     // The preferences file rewritten by the developer (phase 11 PX): his lines as he wrote them; a distilled line he kept
@@ -3525,12 +3714,12 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': type }); res.end(readFileSync(fp));
   } catch (e) { json(res, e.status || 400, { error: e.message }); }
 });
-const RESUME_TEXT = 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc escadrille:state.';
+const RESUME_TEXT = 'Le serveur a redémarré pendant ton tour ; reprends où tu en étais, puis finis par ton bloc calmdev:state.';
 loadPlans();
 // At start, the branches merged while the server was down (or before it knew how to see them) leave the Revue, the waves move
 setImmediate(() => syncMergedAll().then((plans) => { for (const plan of plans) checkWaves(plan).catch(() => {}); }).catch((e) => console.error('merged outside', e)));
 migrateProjects();
-review.init({ db, settingsOf, planOf, rowOf, plansOf: plansList, sessionMessage, mergeSession, onChange: (r) => { if (r.plan) notify('plan:' + r.plan); } });
+review.init({ db, settingsOf, planOf, rowOf, plansOf: plansList, sessionMessage, mergeSession, sessionReviewed, onChange: (r) => { if (r.plan) notify('plan:' + r.plan); } });
 // Escadrilles left "thinking" by a previous run of the server lost their process: they wait for the next message
 db.prepare("update escadrilles set status = 'stopped' where status = 'thinking'").run();
 // The sessions of the page that were alive when the server last stopped come back with --resume; an interrupted

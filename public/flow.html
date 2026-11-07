@@ -6,9 +6,7 @@
 <script src="/i18n.js"></script>
 <script src="/ux.js"></script>
 <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
-<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
-<script src="/app-window.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>calmdev</title>
 <link rel="stylesheet" href="/app.css">
@@ -208,7 +206,11 @@ const draw = () => {
   // the arrow adds what the plans still have to spend, as the estimate projects it (its base may differ, its delta holds)
   const qNow = claude && claude.weekly && Number.isFinite(claude.weekly.pct) ? claude.weekly.pct / 100 : null;
   const qAfter = qNow != null && t.weeklyNow != null && t.weeklyAfter != null ? qNow + (t.weeklyAfter - t.weeklyNow) : null;
-  document.getElementById('totals').innerHTML = `<b>${t.running}</b> ${esc(T('flow.running'))} · <b>${t.waiting}</b> ${esc(T('flow.waiting', { n: t.waiting }))} · <b>${esc(usd(t.cost))}</b> ${esc(T('flow.ofBudget', { b: usd(t.budget) }))}${qNow != null ? ` · ${esc(T('flow.quota'))} <b>${esc(pct(qNow))}</b>${qAfter != null && Math.round(qAfter * 100) > Math.round(qNow * 100) ? ` → ${esc(pct(qAfter))}` : ''}` : ''}`;
+  // the week in euros paid when the subscription price is set (one unit, docs/usage-unit.md), else the share as before;
+  // the arrow is the same projection, in euros; past the included week, the price of a credit point
+  const uw = unit && unit.week; const eur = (x) => T.num(x, { style: 'currency', currency: 'EUR', minimumFractionDigits: x < 10 ? 2 : 0, maximumFractionDigits: x < 10 ? 2 : 0 });
+  const qEur = uw && uw.eurPerPct != null && qNow != null ? `${esc(T('flow.week'))} <b>${esc(eur(Math.min(1, qNow) * uw.includedEur))}</b>${qAfter != null && Math.round(qAfter * 100) > Math.round(qNow * 100) ? ` → ${esc(eur(Math.min(1, qAfter) * uw.includedEur))}` : ''} ${esc(T('flow.ofEur', { b: eur(uw.includedEur) }))}${(qAfter ?? qNow) >= 1 && unit.credits.eurPerPct != null ? ` · ${esc(T('flow.thenCredits', { eur: eur(unit.credits.eurPerPct) }))}` : ''}` : null;
+  document.getElementById('totals').innerHTML = `<b>${t.running}</b> ${esc(T('flow.running'))} · <b>${t.waiting}</b> ${esc(T('flow.waiting', { n: t.waiting }))} · <b>${esc(usd(t.cost))}</b> ${esc(T('flow.ofBudget', { b: usd(t.budget) }))}${qEur ? ` · ${qEur}` : qNow != null ? ` · ${esc(T('flow.quota'))} <b>${esc(pct(qNow))}</b>${qAfter != null && Math.round(qAfter * 100) > Math.round(qNow * 100) ? ` → ${esc(pct(qAfter))}` : ''}` : ''}`;
   // the pause (lib/limits.mjs): which limit, until when, and « Tout reprendre »
   const pz = data.pause; const pl = document.getElementById('pauseLine'); pl.hidden = !pz;
   pl.innerHTML = pz ? `<span>${esc(T(pz.until ? 'flow.pause' : 'flow.pauseOpen', { n: pz.n, name: pz.name, t: pz.until ? (new Date(pz.until) - Date.now() < 20 * 36e5 ? T.time(pz.until) : T.dateTime(pz.until)) : '' }))}</span><button type="button" class="btn" id="resumeAll">${esc(pz.sessions?.length ? T('flow.resumeN', { n: pz.sessions.length, names: pz.sessions.map((s) => s.name).join(', ') }) : T('flow.resumeAll'))}</button>` : ''; // the button says how many it resumes, and which
@@ -272,7 +274,8 @@ document.addEventListener('click', (e) => {
 // Until the flow is read, the screen says why it is empty
 const empty = (text) => { document.getElementById('tools').hidden = true; document.getElementById('totals').textContent = text; cv.setData({ plans: [], nodes: [], edges: [] }, { empty: esc(text) }); };
 const loadMetrics = async () => { try { const r = await fetch(`/api/usage?project=${encodeURIComponent(project)}&only=metrics`); const j = await r.json(); metrics = j.metrics && j.metrics.overall ? j.metrics.overall : null; } catch { metrics = null; } };
-const loadClaude = async () => { try { const r = await fetch(`/api/status?project=${encodeURIComponent(project)}`); const j = await r.json(); claude = j.claude || null; } catch { claude = null; } };
+let unit = null; // the single gauge in euros paid (/api/status unit, docs/usage-unit.md)
+const loadClaude = async () => { try { const r = await fetch(`/api/status?project=${encodeURIComponent(project)}`); const j = await r.json(); claude = j.claude || null; unit = j.unit || null; } catch { claude = null; unit = null; } };
 const load = async () => { if (!project) return empty(T('flow.noProject'));
   let d; try { const r = await fetch(`/api/projectflow?project=${encodeURIComponent(project)}${showAll ? '&all=1' : ''}`); d = await r.json(); } catch { if (!data) empty(T('flow.down')); return; }
   if (d.error) return empty(d.error); data = d;

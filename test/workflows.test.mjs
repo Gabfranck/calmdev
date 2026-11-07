@@ -131,13 +131,13 @@ test('release.yml: a v* tag builds the .dmg on macOS into a DRAFT release; Apple
   const r = runs(d);
   assert.match(r, /gh release create [^\n]*--draft/);
   assert.doesNotMatch(r, /gh release (edit|create)[^\n]*--draft=false/);
-  assert.match(r, /tauri build --bundles dmg/);
+  assert.match(r, /tauri build --target universal-apple-darwin --bundles app,dmg/);
   assert.doesNotMatch(r, /npm publish/);
   const signed = steps(d).find((s) => s.name === 'Build (signed and notarized)');
   const unsigned = steps(d).find((s) => s.name === 'Build (unsigned)');
   assert.equal(signed.if, "steps.apple.outputs.signed == 'true'");
   assert.equal(unsigned.if, "steps.apple.outputs.signed != 'true'");
-  assert.ok(!unsigned.env, 'the unsigned build gets no Apple secret');
+  assert.deepEqual(Object.keys(unsigned.env).filter((k) => k.startsWith('APPLE_')), [], 'the unsigned build gets no Apple secret');
   for (const k of ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_SIGNING_IDENTITY', 'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID'])
     assert.equal(signed.env[k], `\${{ secrets.${k} }}`);
   assert.match(steps(d).find((s) => s.id === 'apple').run, /::warning::/);

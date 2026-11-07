@@ -14,7 +14,7 @@ const queued = (h, text) => ({ type: 'attachment', uuid: 'q' + h, timestamp: at(
 
 test('the measure replays a conversation and the wakes of a day, read only', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'raf-'));
-  const conv = path.join(dir, 'projects', '-Users-gab-Dev-escadrille'); mkdirSync(conv, { recursive: true });
+  const conv = path.join(dir, 'projects', '-Users-dev-Dev-escadrille'); mkdirSync(conv, { recursive: true });
   // one turn 10:00–10:05 during which Dev writes three times (two queued commands, one prompt), then an idle prompt
   const lines = [user('10:00:00', 'Lance la phase'), asst('10:00:10', 'm1', 'tool_use'), queued('10:01:00', 'Et ajoute ceci'), queued('10:02:00', 'Et cela'),
     user('10:03:00', 'Encore une chose'), asst('10:05:00', 'm2', 'end_turn'), user('10:10:00', 'Merci'), asst('10:10:30', 'm3', 'end_turn')];

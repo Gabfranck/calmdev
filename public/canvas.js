@@ -224,7 +224,11 @@ a.cv-frame-t:hover { text-decoration: underline; text-underline-offset: 3px; }
 .cv-track { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--rule); } .cv-track i { display: block; height: 100%; background: var(--control); }
 .cv-node.run .cv-track i { background: var(--accent); } .cv-node.done .cv-track i { background: var(--positive); } .cv-node.wait .cv-track i, .cv-node.mine .cv-track i { background: var(--pill-wait-ink); } .cv-node.err .cv-track i { background: var(--negative); }
 .cv-world.low .cv-node { grid-template-rows: 1fr; } .cv-world.low .cv-node .cv-s, .cv-world.low .cv-node .cv-eta { display: none; } .cv-world.low .cv-node .cv-badge { grid-row: 1; }
-.cv-world.low .cv-node.mine .cv-s { display: flex; position: absolute; right: 12px; top: 10px; left: auto; bottom: auto; padding: 0; background: none; } .cv-world.low .cv-node.mine .cv-s .cv-cost { display: none; } /* the pill stays at every zoom: it is the signal */
+/* the pill stays at every zoom: it is the signal; it takes its own line under the name, never over it (ATOI, Dev 7 Nov.:
+   the badge was laid over the title) */
+.cv-world.low .cv-node.mine { grid-template-rows: auto auto; } .cv-world.low .cv-node.mine .cv-badge { grid-row: 1 / 3; }
+.cv-world.low .cv-node.mine .cv-s { display: flex; grid-column: 2; justify-content: flex-start; min-width: 0; } .cv-world.low .cv-node.mine .cv-s .cv-cost { display: none; }
+.cv-world.low .cv-node.mine .cv-name { -webkit-line-clamp: 1; min-height: 0; } .cv-world.low .cv-node.mine .cv-you { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .cv-world.low .cv-end .cv-end-s { display: none; }
 .cv-world.low .cv-col, .cv-world.low .cv-frame-s { display: none; } /* under 0,8 the letters and the names stay, the rest comes back with the zoom */
 .cv-world.low .cv-node:not(.mine):hover .cv-s, .cv-world.low .cv-node:not(.mine).sel .cv-s { display: flex; position: absolute; left: 0; right: 0; bottom: 2px; padding: 0 16px; background: var(--surface); font-size: max(13px, calc(11px / var(--k))); line-height: 1.5; }

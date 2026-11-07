@@ -54,7 +54,14 @@ test('startPlanner refuses a folder that does not exist or an unknown model', ()
 
 test('safeEnv strips the developer keys and keeps what Claude Code needs', () => {
   const env = safeEnv({ PATH: '/bin', HOME: '/opt/x', OPENAI_API_KEY: 'sk-1', AWS_SECRET_ACCESS_KEY: 'a', SCW_SECRET_KEY: 'b', GITHUB_TOKEN: 'c', NPM_TOKEN: 'd', DB_PASSWORD: 'e', ANTHROPIC_API_KEY: 'keep', CLAUDE_CODE_MESSAGING_TOKEN: 'keep', CLAUDE_CODE_SIMPLE: '1', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'x', GIT_CONFIG_VALUE_0: 'y' });
-  assert.deepEqual(Object.keys(env).sort(), ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_MESSAGING_TOKEN', 'HOME', 'PATH']);
+  assert.deepEqual(Object.keys(env).sort(), ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_MESSAGING_TOKEN', 'HOME', 'PATH', 'npm_config_ignore_scripts']);
+});
+
+test('safeEnv forces npm_config_ignore_scripts=true, whatever the inherited value', () => {
+  assert.equal(safeEnv({ PATH: '/bin' }).npm_config_ignore_scripts, 'true');
+  assert.equal(safeEnv({ PATH: '/bin', npm_config_ignore_scripts: 'false' }).npm_config_ignore_scripts, 'true');
+  const up = safeEnv({ PATH: '/bin', NPM_CONFIG_IGNORE_SCRIPTS: 'false' });
+  assert.equal(up.npm_config_ignore_scripts, 'true'); assert.ok(!('NPM_CONFIG_IGNORE_SCRIPTS' in up), 'no second spelling left to win');
 });
 
 test('a launched session may not cat or head any file', () => {

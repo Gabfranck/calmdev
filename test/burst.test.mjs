@@ -14,6 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as burst from '../lib/burst.mjs';
+import { openDatabase } from '../lib/sqlite.mjs';
 import { horizonOf } from '../lib/horizon.mjs';
 import { fake } from './burst-fake.mjs';
 
@@ -44,6 +45,8 @@ const BACKLOG = '# Backlog\n\n- [ ] Écrire le README\n- [x] Déjà fait\n- [ ] 
 test('the rules: backlog, roadmap, memory, until and drain, the plan shaped, the answer, the horizon', () => {
   assert.deepEqual(burst.parseBacklog(BACKLOG), [{ n: 1, text: 'Écrire le README', done: false }, { n: 2, text: 'Déjà fait', done: true }, { n: 3, text: 'Ajouter un test', done: false }]);
   assert.deepEqual(burst.parseBacklog('- ~~vieux~~\n- neuf').map((t) => t.done), [true, false]);
+  // a numbered open task is pre-checked in « Avancer le backlog » ; a numbered done one is not
+  assert.deepEqual(burst.parseBacklog('- [ ] 1. Un\n- [ ] Deux\n- [x] 2. Fait').map((t) => !!t.pick), [true, false, false]);
   assert.deepEqual(burst.fromRoadmap('## Phase 1 : faite\n- a\n## Phase 2\n- b\n- c\n'), ['b', 'c']);
   assert.deepEqual(burst.fromRoadmap('## Phase 2\n- x\n- Reporté en phase 3 :\n  - **un**\n    suite\n  - deux\n- autre\n'), ['un suite', 'deux']);
   assert.deepEqual(burst.fromMemory('- Brancher le push\n- Le push est fait\n- Reste à tester\n'), ['Brancher le push', 'Reste à tester']);
@@ -132,7 +135,7 @@ test('the server: horizon and backlog, a burst of two tasks, the cap, Stop, the 
 // a session when the server restarted): at a tick and at the start of the server, the burst ends 'ended', the
 // sessions of its plans leave the page and none is resumed; a burst already over never gets a session resumed.
 // a busy timeout: the server writes the same file; without it a read under load throws « database is locked »
-const sql = (S, q, ...a) => { const d = new DatabaseSync(S.db, { timeout: 5000 }); try { return /^\s*select/i.test(q) ? d.prepare(q).all(...a) : d.prepare(q).run(...a); } finally { d.close(); } };
+const sql = (S, q, ...a) => { const d = openDatabase(S.db); try { return /^\s*select/i.test(q) ? d.prepare(q).all(...a) : d.prepare(q).run(...a); } finally { d.close(); } };
 const PAST = () => new Date(Date.now() - 60e3).toISOString();
 const sessionOf = (S, plan) => sql(S, 'select status, mode, session_id from sessions where plan = ?', plan)[0];
 const runningTask = async (S, root) => {
@@ -191,4 +194,24 @@ test('at the start of the server, a burst past its until ends and none of its se
   assert.equal(S.fake.sessionSpawns(), spawned, 'still no session process');
   assert.ok(sql(S, 'select text from session_messages where plan = ?', plan).some((m) => m.text === '⟦srv.b.notResumed⟧'));
   S3.proc.kill('SIGKILL');
+});
+
+// FREIN (Dev, 7 Nov.): above the threshold of finished deliveries not reviewed, « Avancer le backlog » is refused by the
+// server with the path that works, said once in the thread; raised in Accès (POST /api/limits { brake }), it starts again
+test('the review pace brake: the burst refused above the threshold, open again once raised', async () => {
+  const S = boot(); await S.ready();
+  const root = repo(BACKLOG);
+  sql(S, 'insert into plans (id, title, created, json, project) values (?, ?, ?, ?, ?)', 'frein-p', 'Frein', new Date().toISOString(), JSON.stringify({ id: 'frein-p', sessions: [{ id: 'A' }, { id: 'B' }] }), root);
+  for (const id of ['A', 'B']) sql(S, 'insert into sessions (plan, id, status, worktree) values (?, ?, ?, ?)', 'frein-p', id, 'done', JSON.stringify({ path: root, branch: 'b-' + id }));
+  const set = await S.post('/api/limits', { project: root, brake: 1 });
+  assert.equal(set.status, 200); assert.deepEqual([set.body.brake.count, set.body.brake.threshold], [2, 1]);
+  assert.equal((await S.post('/api/limits', { project: root, brake: 0 })).status, 400, 'a threshold is an integer from 1');
+  const r = await S.post('/api/burst', { project: root, capUsd: 1 });
+  assert.equal(r.status, 409); assert.match(r.body.error, /2 livraisons finies à relire \(seuil 1\)/); assert.match(r.body.error, /monte le seuil dans Accès/);
+  await S.post('/api/burst', { project: root, capUsd: 1 });
+  assert.equal(sql(S, "select text from main_messages where project = ? and role = 'system'", root).filter((m) => /livraisons finies à relire/.test(m.text)).length, 1, 'said once in the thread');
+  assert.equal((await S.post('/api/limits', { project: root, brake: 5 })).body.brake.threshold, 5);
+  const ok = await S.post('/api/burst', { project: root, capUsd: 1 });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body)); await S.post(`/api/burst/${ok.body.id}/stop`);
+  S.proc.kill('SIGKILL');
 });

@@ -48,7 +48,60 @@ test('node and npm: tests and scripts local, npm and npx network unless proven o
   is('npm run build', 'network', /script npm « build »/);
   is('npm install --offline', 'local', /installe/);
   is('npx playwright test', 'network', /npx playwright/);
-  is('npm install left-pad', 'network', /registre/);
+  is('npm install left-pad', 'network', /ajoute une dépendance : passe par la proposition de paquet \(left-pad\)/);
+  assert.deepEqual(hostsOf('Bash', { command: 'npm install left-pad' }), ['registry.npmjs.org']);
+});
+
+test('a PATH set in front is read apart: « règle le chemin de Node », local, never unknown', () => {
+  const bin = '~/.nvm/versions/node/v22.23.4/bin:/bin:$PATH';
+  is(`export PATH=${bin}; node --test test/x.test.mjs`, 'local', /^règle le chemin de Node, puis lance les tests Node \(node --test test\/x\.test\.mjs\)\.$/);
+  is(`export PATH=${bin}`, 'local', /^règle le chemin de Node\.$/);
+  is(`env PATH=${bin} node --test test/x.test.mjs`, 'local', /^règle le chemin de Node, puis lance les tests Node/);
+  // counter-examples: the PATH does not hide what follows, another variable is not read
+  is(`export PATH=${bin}; rm -rf ${USERS}/dev/Library`, 'outside', /chemin de Node, puis efface/);
+  is('export FOO=1', 'outside', null, false);
+  is(`export PATH=${bin}; git push`, 'network', /puis pousse vers GitHub/);
+});
+
+test('git check-ignore is a read', () => {
+  is('git check-ignore -v a', 'local', /^lit si git ignore a\.$/);
+  is(`git check-ignore -v ${USERS}/dev/.zshrc`, 'outside', /lit si git ignore ~\/\.zshrc/); // counter-example: a path out of the folder
+});
+
+test('tail and head say how many lines of which file', () => {
+  is('tail -n 12 f', 'local', /^lit les 12 dernières lignes de f\.$/);
+  is('tail -12 f', 'local', /^lit les 12 dernières lignes de f\.$/);
+  is('tail -n12 f', 'local', /^lit les 12 dernières lignes de f\./);
+  is('head -n 5 a.txt', 'local', /^lit les 5 premières lignes de a\.txt\.$/);
+  is('head -3 a.txt', 'local', /^lit les 3 premières lignes de a\.txt\.$/);
+  is('tail -n 1 f', 'local', /^lit la dernière ligne de f\./);
+  is('tail f', 'local', /^lit les 10 dernières lignes de f\./);
+  // counter-examples: the count is never a file; a file out of the folder is outside
+  is('tail -n 12 f', 'local', /^(?!.*\b12 et\b)/);
+  is(`tail -n 12 ${USERS}/dev/.zsh_history`, 'outside', /12 dernières lignes de ~\/\.zsh_history/);
+  is('tail -n +5 f', 'local', /^lit f\.$/);
+});
+
+test('pkill and killall that can reach the calmdev server are outside; a pid or a worktree/port target stays local', () => {
+  for (const c of ['pkill -f server.mjs', 'pkill -f node', 'killall node', 'pkill -9 -f node', 'pkill -f 3078']) is(c, 'outside', /^peut arrêter le serveur calmdev et les autres sessions\.$/, true);
+  is('pkill -f vite', 'outside', /peut arrêter tous les processus dont la commande contient « vite », y compris ceux d'autres sessions/);
+  // counter-examples
+  is('kill 12345', 'local', /^arrête le processus 12345\.$/);
+  is('kill -9 12345', 'local', /^arrête le processus 12345\.$/);
+  is(`pkill -f ${CWD}/server.mjs`, 'local', /arrête les processus dont la commande contient/);
+  is('pkill -f "PORT=3110 node server.mjs"', 'local', /arrête les processus dont la commande contient « PORT=3110/);
+  is('kill -9 -1', 'outside', /plusieurs processus/);
+  assert.notEqual(ex('pkill -f server.mjs').line, ex('pkill -f 3110').line); // two different explanations
+});
+
+test('npm install <package> says to go through the package proposal; ci and bare install do not', () => {
+  for (const c of ['npm install left-pad', 'npm i x', 'npm add x', 'npm install -D left-pad', 'yarn add x']) is(c, 'network', /^ajoute une dépendance : passe par la proposition de paquet/);
+  // counter-examples: still the registry, no dependency sentence
+  for (const c of ['npm ci', 'npm install', 'npm i', 'npm install --offline']) {
+    const r = ex(c); assert.doesNotMatch(r.line, /dépendance/, c); assert.match(r.line, /Installe des paquets depuis le registre/, c);
+  }
+  is('npm ci', 'network', /registre/); is('npm install --offline', 'local');
+  is('npm install --offline x', 'local', /ajoute une dépendance/);
 });
 
 test('rm, mkdir, cp, mv: what is erased or moved, outside when out of the folder', () => {

@@ -67,8 +67,8 @@ test('the plan, launched by the API, asks, answers, reports its state, merges an
   assert.deepEqual(launched.body, { ok: true, launched: ['A'], queued: [] });
   let A = await sessionOf('A');
   assert.equal(A.status, 'running'); assert.equal(A.mode, 'page');
-  assert.equal(A.worktree.path, path.join(root, '.claude', 'worktrees', 'jetable-A')); assert.equal(A.worktree.branch, 'escadrille/jetable/A'); assert.equal(A.worktree.merged, false);
-  assert.equal(sh(A.worktree.path, ['branch', '--show-current']), 'escadrille/jetable/A');
+  assert.equal(A.worktree.path, path.join(root, '.claude', 'worktrees', 'jetable-A')); assert.equal(A.worktree.branch, 'calmdev/jetable/A'); assert.equal(A.worktree.merged, false);
+  assert.equal(sh(A.worktree.path, ['branch', '--show-current']), 'calmdev/jetable/A');
   assert.ok(readFileSync(path.join(root, '.git', 'info', 'exclude'), 'utf8').split('\n').includes('.escadrille/'), 'the handoff folder is excluded from git');
   const args = await argsOf(S1);
   assert.equal(args[args.indexOf('--max-budget-usd') + 1], '5', 'the default cap goes to claude');
@@ -121,9 +121,9 @@ test('the plan, launched by the API, asks, answers, reports its state, merges an
   // the merge, then the next wave starts on its own
   assert.deepEqual((await post('/api/plan/jetable/session/A/merge')).body, { ok: true });
   A = await sessionOf('A'); assert.equal(A.worktree.merged, true); assert.equal(A.mode, null); assert.ok(!existsSync(A.worktree.path), 'the worktree is removed, the branch kept');
-  assert.equal(sh(root, ['branch', '--list', 'escadrille/jetable/A']), 'escadrille/jetable/A');
+  assert.equal(sh(root, ['branch', '--list', 'calmdev/jetable/A']), 'calmdev/jetable/A');
   const B = await until(async () => { const s = await sessionOf('B'); return s.status === 'running' ? s : null; });
-  assert.equal(B.worktree.branch, 'escadrille/jetable/B'); assert.equal(B.worktree.path, path.join(root, '.claude', 'worktrees', 'jetable-B'));
+  assert.equal(B.worktree.branch, 'calmdev/jetable/B'); assert.equal(B.worktree.path, path.join(root, '.claude', 'worktrees', 'jetable-B'));
   assert.equal(sh(root, ['status', '--porcelain']), '', 'the project stays clean');
 
   // settings, stop, resume
@@ -192,7 +192,7 @@ test('the plan, launched by the API, asks, answers, reports its state, merges an
   assert.ok(existsSync(Bs.worktree.path));
   rmSync(path.join(Bs.worktree.cwd, 'package.json')); rmSync(path.join(Bs.worktree.cwd, 'dev.js'));
   assert.deepEqual((await post('/api/running/stop', { kind: 'worktree', plan: 'jetable', session: 'B' })).body, { ok: true });
-  assert.ok(!existsSync(Bs.worktree.path)); assert.equal(sh(root, ['branch', '--list', 'escadrille/jetable/B']), 'escadrille/jetable/B');
+  assert.ok(!existsSync(Bs.worktree.path)); assert.equal(sh(root, ['branch', '--list', 'calmdev/jetable/B']), 'calmdev/jetable/B');
   assert.deepEqual((await get('/api/running')).ours, []);
   if (process.env.SHOW) writeFileSync(process.env.SHOW, JSON.stringify(await get('/api/plan/jetable'), null, 1));
   assert.equal(S1.err.trim(), '', S1.err);

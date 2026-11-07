@@ -52,7 +52,7 @@ test('parseLsof maps each pid to its cwd', () => {
 });
 
 test('isClaude: the native claude, node …/claude, the npm cli; not the desktop app, not grep', () => {
-  assert.deepEqual(parsePs(PS).filter((p) => isClaude(p.args)).map((p) => p.pid), [812, 930, 950]);
+  assert.deepEqual(parsePs(PS).filter((p) => isClaude(p.args)).map((p) => p.pid), [812, 930], '950 is a test\'s fake claude (tmp escadrille-* folder): not counted');
 });
 
 test('others: the claude processes minus the server\'s own pids and their children, cwd from lsof, read only', async () => {
@@ -66,7 +66,7 @@ test('others: the claude processes minus the server\'s own pids and their childr
   assert.deepEqual(calls, [['ps', '-axo', 'pid=,ppid=,lstart=,command='], ['lsof', '-a', '-p', '812,930', '-d', 'cwd', '-Fn']], 'ps then one lsof, nothing else (no kill)');
   // lsof refused: the cwd stays null; nothing found: no lsof at all
   const noLsof = await others({ run: async (cmd) => { if (cmd === 'lsof') throw new Error('denied'); return PS; } });
-  assert.deepEqual(noLsof.map((p) => [p.pid, p.cwd]), [[812, null], [930, null], [950, null]]);
+  assert.deepEqual(noLsof.map((p) => [p.pid, p.cwd]), [[812, null], [930, null]]);
   const none = []; assert.deepEqual(await others({ run: async (cmd) => { none.push(cmd); return '    1     0 Sat Oct 31 21:02:11 2026     /sbin/launchd\n'; } }), []); assert.deepEqual(none, ['ps']);
   const long = await others({ run: async (cmd) => (cmd === 'ps' ? `  5   1 Sun Nov  1 04:15:23 2026     claude ${'x'.repeat(500)}` : '') });
   assert.equal(long[0].args.length, 300); assert.ok(long[0].args.endsWith('…'));

@@ -116,6 +116,68 @@
       <label class="lim-share"><input type="number" min="1" max="100" step="0.5" inputmode="decimal" name="share" value="${max == null ? '' : esc(max)}" placeholder="${esc(T('lim.sharePh'))}" aria-label="${esc(T('lim.shareAria'))}"> %</label>
       <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('lim.shareSave'))}</button>${shareNote ? ` <span role="status" class="${shareNote.startsWith('!') ? 't-neg' : 'acc-muted'}">${esc(shareNote.replace(/^!/, ''))}</span>` : ''}</div></form></details>`;
   };
+  // « Rythme de relecture » (FREIN, Dev 7 Nov., lib/brake.mjs): the finished deliveries not reviewed against a threshold;
+  // above it, neither the pilot nor « Avancer le backlog » launches. Folded: the count and the threshold. Open: one number.
+  let brakeNote = '';
+  const brakeRow = (d, path) => {
+    const b = path && d.brake; if (!b) return '';
+    const over = b.count > b.threshold;
+    const line = esc(T('brake.line', { n: b.count, max: b.threshold }));
+    return `<details class="acc-row" id="acc-brake"${brakeNote ? ' open' : ''}><summary data-jk><span class="acc-name">${esc(T('brake.name'))}</span><span class="acc-line">${line}</span>${pill(over ? 'amber' : 'green',T(over ? 'brake.held' : 'brake.free'))}</summary>
+      <form class="lim-form" data-brake-form data-project="${esc(path)}"><p class="acc-muted">${esc(T('brake.explain'))}</p>
+      <label class="lim-share"><input type="number" min="1" max="999" step="1" inputmode="numeric" name="brake" value="${b.max == null ? '' : esc(b.max)}" placeholder="${esc(b.default)}" aria-label="${esc(T('brake.aria'))}"></label>
+      <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('brake.save'))}</button>${brakeNote ? ` <span role="status" class="${brakeNote.startsWith('!') ? 't-neg' : 'acc-muted'}">${esc(brakeNote.replace(/^!/, ''))}</span>` : ''}</div></form></details>`;
+  };
+  // « Usage » (docs/usage-unit.md, GET/POST /api/unit): one gauge in euros paid. The included week at the subscription
+  // price, then the credits at their billed price; the jump between them is the decision (overflow or wait for the reset).
+  // Folded: the euros used of the week and what a point costs after. Open: the two prices (Mac settings), the API equivalent.
+  let unitData = null; let unitNote = '';
+  const loadUnit = (force) => { if (typeof fetch === 'undefined' || (!force && unitData)) return; if (!force) unitData = { loading: true }; fetch('/api/unit').then((r) => r.json()).catch((e) => ({ error: e.message })).then((d) => { unitData = d; if (typeof render === 'function') render(); }); };
+  const eur = (x, d = 2) => (x == null ? '—' : window.T.num(x, { style: 'currency', currency: 'EUR', minimumFractionDigits: d, maximumFractionDigits: d }));
+  const unitRow = () => {
+    loadUnit(); const g = unitData; if (!g || g.loading || g.error) return '';
+    const w = g.week || {}; const c = g.credits || {}; const s = g.setting || {};
+    const pctTxt = w.pct == null ? T('unit.unread') : sPct(w.pct);
+    const head = w.usedEur != null ? T('unit.usedOf', { a: `<b>${esc(eur(w.usedEur))}</b>`, b: esc(eur(w.includedEur)) }) : s.planEurMonth == null ? esc(T('unit.noPlan')) : `<b>${esc(pctTxt)}</b>`;
+    const after = c.eurPerPct != null ? ' · ' + esc(T('unit.after', { eur: eur(c.eurPerPct), x: window.T.num(g.jump, { maximumFractionDigits: 1 }) })) : '';
+    const level = w.saturated ? (c.using ? 'amber' : 'red') : w.pct != null && w.pct >= 80 ? 'amber' : w.pct != null ? 'green' : '';
+    const word = w.saturated ? T(c.using ? 'unit.onCredits' : 'unit.full') : w.leftEur != null ? T('unit.left', { eur: eur(w.leftEur) }) : pctTxt;
+    // the bar: the included week fills its track; the credits track after it, filled by what was spent of the monthly limit
+    const fill = w.pct == null ? 0 : Math.min(100, w.pct); const cfill = c.spent != null && c.limit ? Math.min(100, (c.spent / c.limit) * 100) : 0;
+    const bar = `<div class="unit-gauge"><div class="unit-bar" role="img" aria-label="${esc(T('unit.barAria', { pct: pctTxt }))}"><span class="unit-incl"><i style="width:${fill}%"></i></span><span class="unit-cred${c.enabled === false || c.disabledReason ? ' off' : ''}"><i style="width:${cfill}%"></i></span></div>
+      <div class="unit-scale num"><span>${esc(T('unit.included'))} ${esc(eur(w.eurPerPct, 3))}${esc(T('unit.perPt'))}</span><span>${esc(T('unit.credits'))} ${c.eurPerPct != null ? esc(eur(c.eurPerPct)) + esc(T('unit.perPt')) : esc(T('unit.creditUnset'))}</span></div></div>`;
+    const credLine = c.spent != null ? T(c.limit != null ? 'unit.spentOf' : 'unit.spent', { a: eur(c.spent), b: eur(c.limit) }) : T('unit.spentUnread');
+    const state = c.disabledReason ? T('unit.disabled', { why: c.disabledReason }) : c.using ? T('unit.using') : '';
+    const models = Object.entries(g.models || {}).map(([m, v]) => `${esc(m.replace(/^claude-/, ''))} <span class="num">${esc(window.T.usd(v.usdPerPct, 2))}${esc(T('unit.perPt'))} (${esc(window.T.usd(v.low, 2))}–${esc(window.T.usd(v.high, 2))}, n=${v.n})</span>`).join(' · ');
+    return `<details class="acc-row" id="acc-unit"${unitNote ? ' open' : ''}><summary data-jk><span class="acc-name">${esc(T('unit.name'))}</span><span class="acc-line">${head}${after}</span>${pill(level, word)}${bar}</summary>
+      <form class="lim-form" data-unit-form><p class="acc-muted">${esc(T('unit.explain'))}</p>
+      <p class="acc-muted num">${esc(w.apiWeekUsd != null ? T('unit.api', { usd: window.T.usd(w.apiWeekUsd, 0), pt: window.T.usd(w.apiUsdPerPct, 2) }) : T('unit.apiNone'))}</p>
+      <p class="acc-muted num">${esc(credLine)}${state ? ' · ' + esc(state) : ''}</p>${models ? `<p class="acc-muted">${esc(T('unit.models'))} ${models}</p>` : `<p class="acc-muted">${esc(T('unit.modelsNone'))}</p>`}
+      <div class="unit-set"><label>${esc(T('unit.planLabel'))} <input type="number" min="1" step="1" inputmode="decimal" name="planEurMonth" value="${s.planEurMonth == null ? '' : esc(s.planEurMonth)}" placeholder="180"> €</label>
+      <label>${esc(T('unit.creditLabel'))} <input type="number" min="0.01" max="10" step="0.01" inputmode="decimal" name="creditEurPerUsd" value="${s.creditEurPerUsd == null ? '' : esc(s.creditEurPerUsd)}" placeholder="—"> €</label></div>
+      <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('unit.save'))}</button>${unitNote ? ` <span role="status" class="${unitNote.startsWith('!') ? 't-neg' : 'acc-muted'}">${esc(unitNote.replace(/^!/, ''))}</span>` : ''}</div></form></details>`;
+  };
+  // « Domaines signés seul » (docs/apprendre-en-signant.md §5): declared once in the review, kept on the Mac for every
+  // project, changed here; one folded line. GET/POST /api/signing.
+  let signData = null, signNote = '';
+  const loadSign = () => { if (typeof fetch === 'undefined' || signData) return; signData = { loading: true }; fetch('/api/signing').then((r) => r.json()).catch((e) => ({ error: e.message })).then((d) => { signData = d; if (typeof render === 'function') render(); }); };
+  const signRow = () => { loadSign(); const d = signData; if (!d || d.loading || d.error || !d.all) return '';
+    const line = d.domains ? (d.domains.length ? d.domains.map((x) => T('sign.domain.' + x)).join(' · ') : '—') : T('acc.signNone');
+    return `<details class="acc-row" id="acc-sign"${signNote ? ' open' : ''}><summary data-jk><span class="acc-name">${esc(T('acc.sign'))}</span><span class="acc-line">${esc(line)}</span></summary>
+      <form class="lim-form" data-sign-form><p class="acc-muted">${esc(T('acc.signHint'))}</p><div class="unit-set">${d.all.map((x) => `<label><input type="checkbox" name="d" value="${x}" ${(d.domains ?? d.recommended).includes(x) ? 'checked' : ''}> ${esc(T('sign.domain.' + x))}</label>`).join('')}</div>
+      <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('sign.declareSave'))}</button>${signNote ? ` <span role="status" class="acc-muted">${esc(signNote)}</span>` : ''}</div></form></details>`; };
+  if (typeof document !== 'undefined') document.addEventListener('submit', async (e) => {
+    const f = e.target.closest && e.target.closest('[data-sign-form]'); if (!f) return; e.preventDefault();
+    const domains = [...f.querySelectorAll('input[name=d]:checked')].map((i) => i.value);
+    const r = await fetch('/api/signing', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }).then((x) => x.json()).catch((er) => ({ error: er.message }));
+    if (!r.error) { signData = { ...signData, ...r }; signNote = T('sign.declared'); } if (typeof render === 'function') render();
+  });
+  if (typeof document !== 'undefined') document.addEventListener('submit', async (e) => {
+    const f = e.target; if (!f || !f.matches || !f.matches('[data-unit-form]')) return; e.preventDefault();
+    const v = (n) => { const x = f.elements[n].value.trim(); return x === '' ? null : Number(x); };
+    const r = await fetch('/api/unit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planEurMonth: v('planEurMonth'), creditEurPerUsd: v('creditEurPerUsd') }) }).then((x) => x.json()).catch((er) => ({ error: er.message }));
+    unitNote = r.error ? '!' + r.error : T('unit.saved'); if (!r.error) unitData = r; if (typeof render === 'function') render();
+  });
   const thr = (t) => (t ? `${t.soft == null ? '–' : t.soft} / ${t.hard == null ? '–' : t.hard} %` : '–');
   const limitsSection = (path) => {
     const d = lims.get(path || ''); loadLims(path);
@@ -129,15 +191,22 @@
     const till = (k) => { const u = own[k] && own[k].until; if (!u) return ''; const t = new Date(u); return isNaN(t) ? '' : ' · ' + T('lim.until', { date: window.T.date(t, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) }); };
     const rows = LIM_KEYS.map((k) => `<tr><th scope="row">${esc(limLabel(k))}</th><td>${input(k, 'soft')}</td><td>${input(k, 'hard')}</td><td class="acc-muted num" data-lim-applies="${k}">${esc(T('lim.applies', { v: thr(d.effective[k]) }) + till(k))}</td></tr>`).join('');
     const scopes = path ? `<div class="lim-scope" role="radiogroup" aria-label="${esc(T('lim.scope'))}"><label><input type="radio" name="limScope" value="project" ${scope === 'project' ? 'checked' : ''}> ${esc(T('lim.thisProject'))}</label><label><input type="radio" name="limScope" value="mac" ${scope === 'mac' ? 'checked' : ''}> ${esc(T('lim.wholeMac'))}</label></div>` : '';
-    return `<section class="acc-sec" id="acc-limits" aria-labelledby="acc-lim-h"><h2 id="acc-lim-h">${esc(T('lim.titleAccess'))}</h2><div class="acc">
+    return `<section class="acc-sec" id="acc-limits" aria-labelledby="acc-lim-h"><h2 id="acc-lim-h">${esc(T('lim.titleAccess'))}</h2><div class="acc">${unitRow()}${signRow()}
       <details class="acc-row" id="acc-lim"${limNote ? ' open' : ''}><summary data-jk><span class="acc-name">${esc(T('lim.thresholds'))}</span><span class="acc-line">${line}</span>${pill('green', T('lim.softHard'))}</summary>
       <form class="lim-form" data-lim-form data-project="${esc(path || '')}"><p class="acc-muted">${esc(T('lim.explain'))}</p>${scopes}
       <table class="lim-table"><thead><tr><th scope="col">${esc(T('lim.limit'))}</th><th scope="col">${esc(T('lim.soft'))}</th><th scope="col">${esc(T('lim.hard'))}</th><th scope="col"><span class="sr">${esc(T('lim.appliesK'))}</span></th></tr></thead><tbody>${rows}</tbody></table>
       <p class="acc-muted">${esc(T(scope === 'mac' ? 'lim.macNote' : 'lim.projectNote'))}</p>
-      <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('lim.save'))}</button>${limNote ? ` <span role="status" class="${limNote.startsWith('!') ? 't-neg' : 'acc-muted'}">${esc(limNote.replace(/^!/, ''))}</span>` : ''}</div></form></details>${shareRow(d, path)}</div></section>`;
+      <div class="lim-actions"><button type="submit" class="btn primary">${esc(T('lim.save'))}</button>${limNote ? ` <span role="status" class="${limNote.startsWith('!') ? 't-neg' : 'acc-muted'}">${esc(limNote.replace(/^!/, ''))}</span>` : ''}</div></form></details>${shareRow(d, path)}${brakeRow(d, path)}</div></section>`;
   };
   if (typeof document !== 'undefined') {
     document.addEventListener('change', (e) => { if (e.target && e.target.name === 'limScope') { limScope = e.target.value; limNote = ''; if (typeof render === 'function') render(); const d = document.getElementById('acc-lim'); if (d) d.open = true; } });
+    document.addEventListener('submit', async (e) => {
+      const f = e.target; if (!f || !f.matches || !f.matches('[data-brake-form]')) return; e.preventDefault();
+      const path = f.dataset.project; const v = f.elements.brake.value.trim(); const brake = v === '' ? null : Number(v);
+      const r = await fetch('/api/limits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: path, brake }) }).then((x) => x.json()).catch((er) => ({ error: er.message }));
+      brakeNote = r.error ? '!' + r.error : T('brake.saved'); if (!r.error) lims.set(path || '', r); if (typeof render === 'function') render();
+      const back = document.querySelector('#acc-brake input[name="brake"]'); if (back) back.focus();
+    });
     document.addEventListener('submit', async (e) => {
       const f = e.target; if (!f || !f.matches || !f.matches('[data-share-form]')) return; e.preventDefault();
       const path = f.dataset.project; const v = f.elements.share.value.trim(); const share = v === '' ? null : Number(v);
@@ -217,6 +286,7 @@
       + kv(T('access.outside'), asked ? `${esc(T('access.allowedN', { n: o.allowed }))}, ${esc(T('access.deniedN', { n: o.denied }))}${o.pending ? `, ${esc(T('access.pendingN', { n: o.pending }))}` : ''}${list(o.list.map((c) => `<span class="${c.answer === 'allowed' ? 't-warn' : ''}">${esc(T(c.answer === 'allowed' ? 'access.allowed' : c.answer === 'denied' ? 'access.denied' : 'access.pending'))}</span> ${esc(hm(c.at))} · ${esc(c.plan)} / ${esc(c.session)} · ${code(c.command)}`))}` : `<span class="acc-none">${esc(T('access.noAskToday'))}</span>`)
       + kv(T('access.unreadableK'), codes(s.unreadable.denyRead) + codes(s.unreadable.readRules))
       + kv(T('access.stripped'), `${T('access.strippedLine', { keys: '\u0001', keep: '\u0002' }).split('&').join('&amp;').replace('\u0001', code('KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL, PRIVATE')).replace('\u0002', code('CLAUDE_* ANTHROPIC_*'))} ${s.env.stripped.length ? codes(s.env.stripped) : `<span class="acc-none">${esc(T('access.noneHere'))}</span>`}`)
+      + kv(T('access.added'), `${codes(Object.entries(s.env.added || {}).map(([k, v]) => `${k}=${v}`))}<p class="acc-muted">${esc(T('access.addedNote'))}</p>`)
       + kv(T('access.network'), domains.length ? `<span class="t-warn">${domains.map(esc).join(', ')}</span> · <a href="#acces-domaines">${esc(T('dom.title'))}</a>` : `<span class="acc-none">${esc(T('access.closed'))}</span>`)
       + kv(T('access.openDirs'), list(s.addDirs.map((d) => `${code(d.dir)} <span class="acc-muted">${esc(d.from)}</span>`)))
       + kv(T('access.plannerTools'), codes(s.tools.planner))
@@ -259,6 +329,7 @@
       ${row('extensions', T('access.connectors'), extLine, L.extensions, T(readyN || onPlugins.length + onMcp.length ? 'access.loaded' : 'access.none'), extBody)}
       ${row('out', T('access.out'), outLine, L.out, a.out.length ? n(a.out.length, 'access.hostsN') : T('access.nothing'), outBody)}
       ${row('closed', T('access.closedRow'), esc(a.closed.join(' · ')), 'green', T('access.closed'), closedBody)}
+      ${window.escadrilleFeedback ? window.escadrilleFeedback.row((inner) => `<details class="acc-row" id="acc-retour"><summary data-jk><span class="acc-name">${esc(T('fb.name'))}</span><span class="acc-line">${esc(T('fb.line'))}</span>${pill('green', T('fb.local'))}</summary><div class="fb-box" id="fbBox">${inner}</div></details>`) : ''}
     </div></section>`;
   };
   window.escadrilleAccess = { view };

@@ -39,7 +39,7 @@ test('create starts from the given base, records it, and keeps the open branch w
 test('create refuses a base that does not exist, and creates nothing', async () => {
   const root = repo();
   await assert.rejects(create({ root, plan: 'p', session: 'C', path: root, base: 'nope' }), /base « nope » introuvable/);
-  assert.equal(sh(root, ['branch', '--list', 'escadrille/p/C']), '', 'no branch left behind');
+  assert.equal(sh(root, ['branch', '--list', 'calmdev/p/C']), '','no branch left behind');
 });
 
 test('the launch: the worktree of a plan based on main starts from main while dev is open; a missing base is a clear error', async () => {
@@ -62,5 +62,5 @@ test('the launch: the worktree of a plan based on main starts from main while de
   assert.notEqual(r.status, 200); assert.match(JSON.stringify(r.body), /base « nope » introuvable/);
   const B = (await get('/api/plan/surnope')).state.find((s) => s.id === 'B');
   assert.equal(B.status, 'todo', 'not launched'); assert.ok(!B.worktree, 'no worktree from the open branch');
-  assert.equal(sh(root, ['branch', '--list', 'escadrille/surnope/B']), '');
+  assert.equal(sh(root, ['branch', '--list', 'calmdev/surnope/B']), '');
 });

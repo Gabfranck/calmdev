@@ -31,7 +31,7 @@ const freePort = () => new Promise((resolve, reject) => {
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
 // The URL of the official repository, as a fresh clone from GitHub has it; any other URL is a fork
-export const OFFICIAL = 'https://github.com/Gabfranck/Escadrille.git';
+export const OFFICIAL = 'https://github.com/Gabfranck/calmdev-private.git';
 export const FORK = 'https://github.com/someone-else/Escadrille.git';
 /** Points the repository's origin at url (adds it when missing); no network: git only writes .git/config. */
 export const setOrigin = (repo, url) => {

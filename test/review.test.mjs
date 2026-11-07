@@ -177,7 +177,7 @@ test('a session review: base and branch from the worktree, changes sent to the s
   let r = await get('/api/review?plan=revue&session=A');
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const id = r.body.id;
-  assert.deepEqual({ base: r.body.base, head: r.body.head, title: r.body.title, files: r.body.files.map((f) => f.path) }, { base: 'main', head: 'escadrille/revue/A', title: 'A · Première', files: ['keep.txt'] });
+  assert.deepEqual({ base: r.body.base, head: r.body.head, title: r.body.title, files: r.body.files.map((f) => f.path) }, { base: 'main', head: 'calmdev/revue/A', title: 'A · Première', files: ['keep.txt'] });
   assert.deepEqual(r.body.mergeAllowed, { allowed: true, level: 'guided', why: '', review: id });
   assert.equal((await get(`/api/reviews?project=${q(root)}`)).body.reviews[0].id, id, 'the session is in the queue');
 

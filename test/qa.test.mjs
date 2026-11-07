@@ -85,8 +85,8 @@ test('a simulated plan: the last merge launches the QA session once, its file is
   assert.deepEqual([qs.model, qs.budget, qs.after, qs.where], ['claude-sonnet-5-5', 3, ['A', 'B'], 'docs/qa/run.md']);
   assert.ok(JSON.parse(readFileSync(path.join(S.plans, 'run.json'), 'utf8')).qa, 'the plan file carries it');
   const brief = await until(() => S.prompts().find((x) => x.text.includes('Tu es la session QA')));
-  assert.match(brief.text, /### A · Session A[\s\S]*fusionnée \(escadrille\/run\/A\)/);
-  assert.match(brief.text, /Merge escadrille\/run\/B: Session B/, 'the merges read in git');
+  assert.match(brief.text, /### A · Session A[\s\S]*fusionnée \(calmdev\/run\/A\)/);
+  assert.match(brief.text, /Merge calmdev\/run\/B: Session B/, 'the merges read in git');
   const qrow = await until(async () => { const s = await S.session('run', 'QA'); return s?.status === 'done' ? s : null; });
   assert.equal(qrow.budget, 3);
   // the Review: « Plan de QA » first, ready, its link opens the file from the worktree until it is merged

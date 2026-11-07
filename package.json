@@ -1,0 +1,26 @@
+{
+  "name": "calmdev",
+  "version": "0.1.0",
+  "description": "Plans parallel Claude Code sessions, runs them sandboxed, and only interrupts you when one needs you.",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": { "node": ">=22.13" },
+  "bin": { "calmdev": "bin/calmdev.mjs" },
+  "files": [
+    "server.mjs",
+    "lib/",
+    "public/",
+    "bin/",
+    "install.sh",
+    "run.sh",
+    "scripts/open-app.sh",
+    "scripts/policy-hook.mjs",
+    ".claude/skills/plan/",
+    "catalog/capabilities.json",
+    "plans/templates/",
+    "playbooks/",
+    "docs/*.md",
+    "LICENSE",
+    "team/LICENSE"
+  ]
+}

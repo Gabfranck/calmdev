@@ -13,8 +13,9 @@ let gitOk = true; try { execFileSync('git', ['--version'], { stdio: 'ignore' });
 const repo = (url) => { const r = tmp('escadrille-selfedit-'); execFileSync('git', ['init', '-q'], { cwd: r }); if (url) execFileSync('git', ['remote', 'add', 'origin', url], { cwd: r }); return r; };
 
 test('the official repository is recognised in its usual spellings', () => {
-  for (const u of ['https://github.com/Gabfranck/Escadrille', 'https://github.com/Gabfranck/Escadrille.git', 'git@github.com:Gabfranck/Escadrille.git', 'https://github.com/gabfranck/escadrille/']) assert.ok(UPSTREAM.test(u), u);
-  for (const u of ['https://github.com/someone/Escadrille.git', 'https://github.com/Gabfranck/Escadrille-fork', '']) assert.ok(!UPSTREAM.test(u), u);
+  for (const u of ['https://github.com/Gabfranck/Escadrille', 'https://github.com/Gabfranck/Escadrille.git', 'git@github.com:Gabfranck/Escadrille.git', 'https://github.com/gabfranck/escadrille/',
+    'https://github.com/Gabfranck/calmdev-private.git', 'git@github.com:Gabfranck/calmdev-private.git', 'https://github.com/Gabfranck/calmdev']) assert.ok(UPSTREAM.test(u), u);
+  for (const u of ['https://github.com/someone/Escadrille.git', 'https://github.com/Gabfranck/Escadrille-fork', 'https://github.com/someone/calmdev.git', 'https://github.com/Gabfranck/calmdev-private-fork', '']) assert.ok(!UPSTREAM.test(u), u);
 });
 
 test('a plain install is locked; a fork, no origin, the maintainer file and the env are open', { skip: !gitOk && 'git cannot start here' }, () => {

@@ -185,3 +185,18 @@ test("Escadrille's own docs/regles.md parses and every pattern is readable", () 
   assert.ok(own.rules.every((r) => !r.error), own.rules.filter((r) => r.error).map((r) => r.error).join(', '));
   assert.ok(own.checks.includes('node --test test/*.test.mjs'));
 });
+
+test('an unsourced claim about a team\'s infra becomes « supposé »; a cited file clears it', async () => {
+  const patch = (text) => ({ path: 'docs/equipe.md', status: 'added', additions: 3, deletions: 0,
+    patch: `@@ -0,0 +1,3 @@\n+${text.join('\n+')}\n` });
+  const out = await prereview({ files: [patch([
+    "L'équipe déploie sur AWS avec Docker.",
+    "L'équipe déploie avec Docker (voir `docker-compose.yml`).",
+    'Le logo est bleu.',
+  ])], rules: '', guarded: [] });
+  const assumed = out.rules.filter((r) => r.assumed);
+  assert.equal(assumed.length, 1);
+  assert.equal(assumed[0].level, 'warn');
+  assert.equal(assumed[0].line, 1);
+  assert.match(assumed[0].text, /^supposé : /);
+});

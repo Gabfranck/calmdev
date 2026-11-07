@@ -62,7 +62,7 @@ const boot = (env = {}) => {
   S.get = async (p) => { const r = await fetch(base + p); return { status: r.status, body: Buffer.from(await r.arrayBuffer()) }; };
   S.post = async (p, b = {}) => { const r = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }); return { status: r.status, json: await r.json() }; };
   S.demo = async () => (await fetch(base + '/api/demo')).json();
-  S.branches = () => sh(root, ['branch', '--list', '--format=%(refname:short)', 'escadrille/demo/*']);
+  S.branches = () => sh(root, ['branch', '--list', '--format=%(refname:short)', 'calmdev/demo/*', 'escadrille/demo/*']);
   return S;
 };
 
@@ -74,6 +74,7 @@ test('classify: public/ served, the rest refused, events.js never taken', () => 
 
 test('a demo changes the served page live, refuses what is outside public/, Remove gives main back byte for byte', async () => {
   const S = boot(); await S.ready; await S.listen();
+  sh(S.root, ['branch', 'escadrille/demo/20261101t000000z']); // the remains of a demo of before the rename: swept at the start
   const before = await S.get('/'); const beforeJs = await S.get('/events.js');
   assert.equal(before.status, 200);
   assert.deepEqual(await S.demo(), { on: false });
@@ -85,7 +86,7 @@ test('a demo changes the served page live, refuses what is outside public/, Remo
   assert.equal(live.prompt, 'mets tous les boutons en arc-en-ciel'); assert.equal(live.model, 'claude-sonnet-5-5');
   assert.deepEqual(live.files, ['index.html', 'rainbow.css']);
   assert.deepEqual(live.refused, ['lib/a.mjs', 'public/events.js', 'server.mjs']);
-  assert.equal(S.branches(), 'escadrille/demo/' + r.json.id);
+  assert.equal(S.branches(), 'calmdev/demo/' + r.json.id, 'the old demo branch is gone, the new one is calmdev/…');
   // the session: tools of files only, no Bash, the instruction to touch public/ only
   const args = JSON.parse(readFileSync(path.join(S.fake.dir, 'args.json'), 'utf8'));
   const at = args.indexOf('--allowedTools') + 1; assert.deepEqual(args.slice(at, args.findIndex((a, i) => i >= at && a.startsWith('--'))), ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'MultiEdit']); assert.match(args[args.indexOf('--append-system-prompt') + 1], /public\//);

@@ -133,6 +133,16 @@ voit par `burstDraining(plan)` (exporté par `lib/burst.mjs`) et ne répond pas 
 - Une file de revue (`GET /api/reviews`) estimée à plus de 2 h : la rafale ne lance plus de plan, elle attend.
   Estimation : une heure par 400 lignes changées, comme « À relire » sur l'accueil.
 
+## Le rythme de relecture (FREIN, Dev 7 novembre)
+
+`lib/brake.mjs` compte par projet les livraisons finies non relues : session `done`, worktree non fusionné, sans
+approbation, plan ni kit ni clos. Au-delà du seuil (`reviewBrake` du projet, réglé dans Accès › Rythme de relecture,
+`POST /api/limits { project, brake }`, défaut 8), `POST /api/burst` répond 409 et la rafale en cours ne lance plus de
+tâche ; une phrase le dit une fois dans le fil, avec le chemin qui marche (relire, ou monter le seuil). Le pilote est
+refusé de même (`launch`) ; un lancement à la main du développeur reste possible. Tests : `test/brake.test.mjs` et
+le dernier test de `test/burst.test.mjs`.
+Une livraison dont la dernière activité (`sessions.at`) date de plus de `STALE_DAYS` (3) jours ne compte plus pour le frein ; elle reste visible ailleurs, rien n'est supprimé ni fusionné.
+
 ## Les garde-fous
 
 - Mode Autonome : seules la sécurité et la livraison attendent le développeur.

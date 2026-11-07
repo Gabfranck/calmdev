@@ -8,6 +8,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { testEnv } from './test-env.mjs';
 import { mkdtempSync, writeFileSync, readFileSync, realpathSync, statSync, rmSync, existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
+import { openDatabase } from '../lib/sqlite.mjs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fakeGh, fakeLinear, LINEAR_KEY, PR_URL } from './fake-gh.mjs';
@@ -44,7 +45,7 @@ const finish = async (sid, { remove = false } = {}) => {
   const w = await worktree.create({ root, plan: 'pr', session: sid, path: root });
   writeFileSync(path.join(w.path, `${sid}.txt`), sid + '\n'); sh(w.path, ['add', '.']); sh(w.path, ['commit', '-qm', 'work ' + sid]);
   if (remove) await worktree.remove({ root, path: w.path });
-  const db = new DatabaseSync(DB, { timeout: 5000 });
+  const db = openDatabase(DB);
   db.prepare("update sessions set status = 'done', worktree = ?, summary = ? where plan = 'pr' and id = ?").run(JSON.stringify({ ...w, root, merged: remove }), `Fait : la session ${sid}, PR prête.\nReste : rien.`, sid);
   db.close();
   return w;
@@ -162,7 +163,7 @@ test('a PR already open gives its URL; a merged session pushes from the reposito
   assert.equal((await get('/api/plan/pr')).state.find((s) => s.id === 'C').pr, null, 'nothing kept on a failure');
   assert.match((await get('/api/plan/pr/session/C/pr')).error, /aucune PR/);
   gh.setMode('');
-  rmSync(path.join(root, '.claude', 'worktrees', 'pr-C'), { recursive: true, force: true }); sh(root, ['worktree', 'prune']); sh(root, ['branch', '-D', 'escadrille/pr/C']);
+  rmSync(path.join(root, '.claude', 'worktrees', 'pr-C'), { recursive: true, force: true }); sh(root, ['worktree', 'prune']); sh(root, ['branch', '-D', 'calmdev/pr/C']);
   assert.match((await post('/api/plan/pr/session/C/pr')).body.error, /n’existe plus/);
 });
 
@@ -184,7 +185,7 @@ test('the sync: setting on by default, off and on again; launch → In Progress;
   assert.equal(moved.variables.s, 't1-1', 'Todo → In Progress'); assert.equal(lin.stateName('ORC-5'), 'In Progress');
   // the merge: the session made done by hand, merged twice, one comment of state and cost
   await until(async () => (await get('/api/plan/sync')).state.find((x) => x.id === 'S')?.worktree?.branch);
-  const dbw = new DatabaseSync(DB, { timeout: 5000 }); dbw.prepare("update sessions set status = 'done', summary = ?, usage = ? where plan = 'sync' and id = 'S'").run('Fait : le score.\nReste : la capture.', JSON.stringify({ input: 1, output: 1, cost: 1.5 })); dbw.close();
+  const dbw = openDatabase(DB); dbw.prepare("update sessions set status = 'done', summary = ?, usage = ? where plan = 'sync' and id = 'S'").run('Fait : le score.\nReste : la capture.', JSON.stringify({ input: 1, output: 1, cost: 1.5 })); dbw.close();
   const n0 = (lin.comments['ORC-5'] || []).length;
   const m = await post('/api/plan/sync/session/S/merge'); assert.equal(m.status, 200, JSON.stringify(m.body));
   await until(() => (lin.comments['ORC-5'] || []).length > n0);

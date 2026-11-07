@@ -1,7 +1,12 @@
-// The phone's project functions (phone/lib/projects.ts), which have no imports: node 22 strips the types.
+// The phone's project functions (phone/lib/projects.ts), which have no imports. Node 22.13 (the minimum, and the CI's)
+// does not import a .ts without --experimental-strip-types: the file died at load ("test failed", no subtest). The test
+// strips the types itself (module.stripTypeScriptTypes, since 22.13) and imports the result.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { shortName, filterPlans, groupPlans, projectsOf, projectOfPlan, pickPlan, validProject } from '../phone/lib/projects.ts';
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+const source = stripTypeScriptTypes(readFileSync(new URL('../phone/lib/projects.ts', import.meta.url), 'utf8'));
+const { shortName, filterPlans, groupPlans, projectsOf, projectOfPlan, pickPlan, validProject } = await import('data:text/javascript,' + encodeURIComponent(source));
 // Fake home folders are assembled at run time: scripts/trace-scan.mjs takes a written one for a real one.
 const USERS = '/Users'; const HOMES = '/home';
 

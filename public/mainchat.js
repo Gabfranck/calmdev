@@ -98,12 +98,15 @@
   const planTitle = (id) => { const p = flow && flow.plans.find((x) => x.id === id); return p ? p.title : id; };
   const threadHref = (it) => href(`/plan/${encodeURIComponent(it.plan)}?node=${encodeURIComponent(it.s)}`);
   const minutes = (m) => (m < 5 ? T('main.lt5') : m < 60 ? T('main.aboutMin', { n: Math.round(m / 5) * 5 }) : T('main.aboutH', { n: Math.floor(m / 60) }));
+  const askText = (it) => (it.ask ? it.ask.q || (it.ask.key ? T(it.ask.key) : '') : '');
+  const askRec = (it) => (it.ask && it.ask.rec ? T('next.ask.rec', { rec: it.ask.rec }) : '');
   const todoLine = (it) => {
     const link = (h, label) => `<a class="btn" href="${esc(h)}">${esc(label)}</a>`;
     const plan = it.plan ? planTitle(it.plan) : '';
     switch (it.kind) {
-      case 'design': return { badge: it.s, text: T('main.todo.design', { s: it.s }), why: `${T('main.todo.whyDesign')} · ${plan}`, act: link(threadHref(it), T('main.reply')) };
-      case 'reply': return { badge: it.s, text: T('main.todo.reply', { s: it.s }), why: `${T('main.todo.whyReply')} · ${plan}`, act: link(threadHref(it), T('main.reply')) };
+      // ATOI: the line says nextStep's question and its recommended answer, never the session's « read file X »
+      case 'design': return { badge: it.s, text: askText(it) || T('main.todo.design', { s: it.s }), why: `${askRec(it) || T('main.todo.whyDesign')} · ${plan}`, act: link(threadHref(it), T('main.reply')) };
+      case 'reply': return { badge: it.s, text: askText(it) || T('main.todo.reply', { s: it.s }), why: `${askRec(it) || T('main.todo.whyReply')} · ${plan}`, act: link(threadHref(it), T('main.reply')) };
       case 'permission': { const p = it.perm; const why = p && p.network ? `${T('main.asksNet')} · ${p.network}` : p && p.tool ? `${T('main.asksTool')} ${p.tool}` : T('main.asksPerm');
         return { badge: it.s, text: T('main.todo.permission', { s: it.s }), why: `${why} · ${plan}`, act: p ? `<button type="button" class="btn" data-allow="${esc(it.plan)}/${esc(it.s)}/${esc(p.id)}">${esc(T('main.allow'))}</button>` : link(threadHref(it), T('main.open')) }; }
       case 'merge': { const c = mergeNotes.get(`${it.plan}/${it.s}`); // the refused merge stays said on its line (ATOI, 6 November)
@@ -111,12 +114,11 @@
         return { badge: it.s, text: T('main.todo.merge', { s: it.s }), why: `${T('main.todo.whyMerge')} · ${plan}`, note, act: `<button type="button" class="btn" data-merge="${esc(it.plan)}/${esc(it.s)}">${esc(T('main.merge'))}</button>` }; }
       case 'launch': return { badge: '▶', text: T('flow.end.launch', { title: it.next.title }), why: `${T('flow.end.click')} · ${plan}`, act: link(href('/plan/' + encodeURIComponent(it.next.id)), T('main.open')) };
       case 'qa': return { badge: '✓', text: T('next.why.qaReady'), why: T('main.todo.whyQa', { n: it.plans || 0 }), act: `<button type="button" class="btn" data-start-qa>${esc(T('next.btn.startQa'))}</button>` };
-      case 'guard': return { badge: it.s || '!', text: T('main.todo.guard', { s: it.s || '' }), why: T('main.todo.whyGuard'), act: link(href('/review/' + encodeURIComponent(it.id)), T('main.open')) };
+      case 'guard': return { badge: it.s || '!', text: T('main.todo.guard', { s: it.s || '' }), why: T('main.todo.whyGuard'), act: link(it.id ? href('/review/' + encodeURIComponent(it.id)) : it.link || threadHref(it), T(it.id ? 'main.open' : 'next.btn.review')) };
       case 'review': return { badge: it.s || '…', text: T('main.todo.review', { s: it.s || '' }), why: `${T('main.todo.whyReview')} · ${minutes(it.minutes || 0)}`, act: link(href('/review/' + encodeURIComponent(it.id)), T('main.open')) };
       // Abandonner: the planning stops (POST /api/escadrille/:id/stop, status stopped) and leaves « À toi » at once
       case 'planning': return { badge: '?', text: T('main.todo.planning'), why: `${T('main.todo.whyPlanning')} · ${it.title}`, act: `<span class="mc-acts"><button type="button" class="btn ghost" data-abandon="${esc(it.id)}">${esc(T('main.abandon'))}</button>${link(href('/e/' + encodeURIComponent(it.id)), T('main.reply'))}</span>` };
       case 'proposal': return { badge: '▶', text: T('main.todo.proposal'), why: `${T('main.todo.whyProposal')} · ${it.title}`, act: `<button type="button" class="btn" data-goto="mc-${esc(String(it.seq))}">${esc(T('main.todo.see'))}</button>` };
-      case 'install': return { badge: '⌘', text: T('main.todo.install'), why: T('main.todo.whyInstall'), act: `<button type="button" class="btn" data-install>${esc(T('main.todo.installBtn'))}</button>` };
       // the team (docs/team.md): a colleague's session touches what ours touches; the detail (every file) is in the session's thread
       case 'team': return { badge: it.s, text: T('main.todo.team', { member: it.member, file: it.file }), why: `${T('main.todo.whyTeam', { title: it.title })} · ${plan}`, act: link(threadHref(it), T('main.open')) };
       // the Linear sync (docs/connectors.md) could not update a ticket today: the key or the ticket, in Accès; one line a day at most
@@ -130,8 +132,7 @@
   const waiting = () => {
     const nodes = flow ? flow.nodes : [];
     const proposals = ((st && st.messages) || []).filter((m) => m.role === 'claude' && m.data && m.data.proposal && m.data.proposal.status === 'proposed').map((m) => ({ seq: m.seq, title: m.data.proposal.title }));
-    const install = !!(window.escadrilleApp && window.escadrilleApp.offered && window.escadrilleApp.offered());
-    const list = window.escadrilleTodo ? window.escadrilleTodo.items({ nodes, ends: flow ? flow.ends || [] : [], qa: flow ? flow.qa || null : null, perms, escs: escs || [], reviews: reviews || [], proposals, pilot: pilotPresent(), install, team: teamInfo && teamInfo.on ? teamInfo.collisions || [] : [], linear: flow ? flow.linear || null : null, fixes: flow ? flow.fixes || [] : [], withKept: true }) : [];
+    const list = window.escadrilleTodo ? window.escadrilleTodo.items({ nodes, ends: flow ? flow.ends || [] : [], qa: flow ? flow.qa || null : null, perms, escs: escs || [], reviews: reviews || [], proposals, pilot: pilotPresent(), team: teamInfo && teamInfo.on ? teamInfo.collisions || [] : [], linear: flow ? flow.linear || null : null, fixes: flow ? flow.fixes || [] : [], withKept: true }) : [];
     const pl = pilotLine();
     return (pl ? [pl] : []).concat(list.map((it) => { const l = todoLine(it); return l && { ...l, kept: !!it.kept }; }).filter(Boolean));
   };

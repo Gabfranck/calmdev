@@ -318,6 +318,36 @@ kbd { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 4px
 .lc-vit dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; padding: 4px 14px 8px; }
 .lc-vit dt { color: var(--muted); } .lc-vit dd { margin: 0; color: var(--text); text-align: right; }
 .lc-foot { border-top: 1px solid var(--rule); margin-top: 6px; padding: 8px 14px 2px; font-size: 12.5px; }
+/* An orphan server (docs/sessions.md 2026-11-07): name, the word « orphelin », its port, one « Arrêter »; the detail folded in
+   one line under it. Arming changes the word inside a fixed cell (both labels stacked), never the row's width or height. */
+.lc-orph { padding: 6px 14px; }
+.lc-oline { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.lc-oline .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lc-otag { flex: none; white-space: nowrap; font-size: 12px; font-weight: 500; line-height: 18px; padding: 0 6px; border-radius: 4px; color: var(--warning); background: color-mix(in srgb, var(--warning) 13%, transparent); }
+.lc-oline .num { flex: none; color: var(--muted); }
+.lc-ostop { flex: none; margin-left: auto; display: inline-grid; height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+.lc-ostop > span { grid-area: 1 / 1; line-height: 24px; text-align: center; }
+.lc-ostop > span.off { visibility: hidden; }
+.lc-ostop:hover, .lc-ostop:focus-visible { border-color: var(--negative); color: var(--negative); }
+.lc-ostop:focus-visible { outline: 2px solid var(--negative); outline-offset: 1px; }
+.lc-ostop.armed, .lc-ostop.armed:hover, .lc-ostop.armed:focus-visible { background: var(--negative); border-color: var(--negative); color: #fff; }
+.lc-ostop:disabled { cursor: default; color: var(--muted); border-color: var(--border); }
+.lc-od { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.lc-od > summary { list-style: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 2px 0 2px 14px; position: relative; border-radius: 4px; }
+.lc-od > summary::-webkit-details-marker { display: none; }
+.lc-od > summary::before { content: ''; position: absolute; left: 2px; top: 8px; border: 4px solid transparent; border-left-color: currentColor; border-right-width: 0; }
+.lc-od[open] > summary::before { transform: rotate(90deg); }
+.lc-od > summary:hover, .lc-od > summary:focus-visible { color: var(--text); background: var(--active); outline: none; }
+.lc-od dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 4px 0 2px; padding: 0 0 0 14px; }
+.lc-od dt { color: var(--muted); }
+.lc-od dd { margin: 0; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.lc-od dd.cmd, .lc-od dd.dir { font-family: var(--mono); font-size: 12px; }
+.lc-od dd.dir { overflow-wrap: break-word; } /* a folder breaks after a « / » (its <wbr>), never inside a name */
+.lc-when { position: relative; border-bottom: 1px dotted var(--muted); cursor: default; }
+.lc-when:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.lc-tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 2; white-space: nowrap; padding: 3px 8px; border-radius: 4px; background: var(--text); color: var(--surface); font-size: 12px; visibility: hidden; pointer-events: none; }
+.lc-when:hover .lc-tip, .lc-when:focus .lc-tip { visibility: visible; }
+.lc-oerr { margin: 4px 0 0; font-size: 12.5px; color: var(--negative); }
 .sheet { flex: 1; margin: 0 8px 8px 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sheet); min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
 .canvas { padding: var(--pad); max-width: 1680px; width: 100%; }
 
@@ -446,6 +476,29 @@ details[open] > summary::before { transform: rotate(45deg); }
 .acc-row > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .acc-row > summary:hover .acc-name { color: var(--text); }
 .acc-name { font-weight: 600; }
+/* « Retour » (public/feedback.js): the sentence, the whole report as it will leave, then the link and Copier */
+.fb-box { display: grid; gap: 8px; padding: 4px var(--card-pad) var(--card-pad); max-width: 760px; }
+.fb-label { font-weight: 500; }
+.fb-field { display: block; width: 100%; min-height: 64px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); font: inherit; line-height: 22px; resize: vertical; }
+.fb-field::placeholder { color: var(--faint); }
+.fb-report { margin: 0; max-height: 320px; overflow: auto; padding: 12px; border-radius: var(--radius-control); background: var(--surface); color: var(--text); font: var(--fs-small)/20px var(--mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }
+.fb-report:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fb-act { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.fb-sub, .fb-note { color: var(--muted); font-size: var(--fs-small); }
+@media (max-width: 860px) { .fb-act .btn { width: 100%; height: 44px; justify-content: center; } }
+/* the single gauge (docs/usage-unit.md): the included week, then a narrower credits track; always under the folded line */
+#acc-unit > summary { grid-template-rows: auto auto; padding-block: 12px; }
+.unit-gauge { grid-column: 2 / -1; display: grid; gap: 6px; }
+.unit-bar { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 4px; height: 8px; }
+.unit-bar > span { position: relative; background: var(--active); border-radius: 4px; overflow: hidden; }
+.unit-bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; }
+.unit-bar .unit-cred i { background: var(--warning); }
+.unit-bar .unit-cred.off { background: repeating-linear-gradient(135deg, var(--active) 0 4px, var(--rule) 4px 8px); }
+.unit-scale { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 4px; color: var(--muted); font-size: var(--fs-small); }
+.unit-scale span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unit-set { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 8px 0; }
+.unit-set input { width: 7em; }
+@media (max-width: 600px) { .unit-bar, .unit-scale { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
 .acc-line { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .acc-row[open] .acc-line { white-space: normal; }
 .acc-line b { font-weight: 600; color: var(--text); }
@@ -482,44 +535,6 @@ dialog.ux-keys::backdrop { background: rgb(0 0 0 / 0.25); }
 .ux-keys-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .ux-keys-list li { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: baseline; color: var(--muted); }
 .ux-keys-k kbd { margin-right: 2px; }
-
-/* ---- the installed app (phase 11 W): Chrome's borderless window, controls drawn over the page. Only when the window
-   is in overlay (navigator.windowControlsOverlay.visible); elsewhere nothing below applies. The page draws the title
-   bar: the sidebar leaves room for the buttons (left on macOS, right on Windows), the mark and the top of the sidebar
-   and of the header drag the window, every control stays no-drag ---- */
-.install-line { display: flex; align-items: flex-start; gap: 4px; margin-top: auto; padding: 8px 8px 0; font-size: var(--fs-small); line-height: 18px; }
-.install-line[hidden] { display: none; }
-.install-line:not([hidden]) + .bottom-line { margin-top: 0; }
-.install-go, .install-no { border: 0; background: none; padding: 0; color: var(--faint); font: inherit; cursor: pointer; text-align: left; }
-.install-go { flex: 1; min-width: 0; } .install-go:hover, .install-no:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
-.install-no { flex: none; padding: 0 4px; }
-.drag-strip { display: none; }
-/* The overlay is one switch, --wco: the real window sets it from the media query with the titlebar-area values Chrome
-   gives; ?wco=mac (sidebar.js, for a capture) sets it with the values of a real macOS window, the three buttons drawn
-   top left. The rules below read the switch through a style query, so the simulated frame runs the same CSS as the app. */
-@media (display-mode: window-controls-overlay) {
-  :root { --wco: 1; --wco-h: env(titlebar-area-height, 40px); --wco-x: env(titlebar-area-x, 0px); --wco-w: env(titlebar-area-width, 100vw); }
-}
-:root[data-wco="mac"] { --wco: 1; --wco-h: 28px; --wco-x: 80px; --wco-w: calc(100vw - 80px); }
-:root[data-wco="mac"] body::before { content: ""; position: fixed; z-index: 50; top: 8px; left: 12px; width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840; pointer-events: none; }
-@container style(--wco: 1) {
-  /* the title row of the window is drawn by the page: the top of the sidebar drags it, and the bar's content (the
-     entry « Escadrille » first, then the projects) starts under it, so nothing sits under the window's buttons (Dev,
-     2026-11-02: the picker was hidden by them); no row of the bar is a drag zone */
-  .sidebar { padding-top: calc(var(--wco-h) + 8px); }
-  .drag-strip { display: block; position: absolute; top: 0; left: 0; right: 0; height: var(--wco-h); -webkit-app-region: drag; app-region: drag; }
-  .sidebar :is(a, button, input, summary, form) { -webkit-app-region: no-drag; app-region: no-drag; }
-  /* the mark sits on the controls' row, after the buttons; on Windows they are on the right, x is 0 and nothing moves */
-  .mark { position: relative; height: var(--wco-h); margin-bottom: 6px; margin-left: max(0px, calc(var(--wco-x) - 12px)); -webkit-app-region: no-drag; app-region: no-drag; }
-  .topbar { height: max(48px, var(--wco-h)); -webkit-app-region: drag; app-region: drag; padding-right: max(24px, calc(100vw - var(--wco-x) - var(--wco-w) + 12px)); }
-  .topbar :is(a, button, input, select, textarea, summary, label, [tabindex], [role="button"]) { -webkit-app-region: no-drag; app-region: no-drag; }
-}
-@container style(--wco: 1) {
-  @media (max-width: 860px) {
-    .topbar { padding-left: max(16px, calc(var(--wco-x) + 8px)); }
-    .sidebar .close { top: calc((var(--wco-h) - 32px) / 2); }
-  }
-}
 
 /* The foot of the bar (phase 11, X): the language in two letters at a glance beside the folded « Ce Mac » line (Dev,
    2026-11-02 04:35: it was folded inside it and could not be found); the project's logo in the picker, the dot otherwise */

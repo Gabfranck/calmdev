@@ -1,6 +1,6 @@
 #!/bin/sh
 # Starts Escadrille on http://localhost:3078, this Mac only; ./run.sh --lan opens it to the LAN (http://192.168.1.x:3078, the phone)
-# ./run.sh --open reopens the app window on a server that already runs
+# ./run.sh --open reopens calmdev (the Mac app, else a browser tab) on a server that already runs
 # A minimal supervisor: when the server exits with code 75 (a merge touched server.mjs, lib/ or run.sh), it starts
 # again; any other exit ends run.sh with that code. Ctrl-C or a TERM to run.sh stops the server cleanly.
 # A restart from a shell: `kill -HUP <pid of the node child>` (not run.sh's): the server exits with 75 and comes back.

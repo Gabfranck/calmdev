@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, statSy
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gitRoot, create, merge, remove } from '../lib/worktree.mjs';
+import * as names from '../lib/names.mjs';
 
 const sh = (cwd, args) => execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
 const repo = () => {
@@ -25,9 +26,9 @@ test('create makes the worktree on its branch, excludes the folder, keeps the su
   const root = repo();
   const w = await create({ root, plan: 'p1', session: 'A', path: path.join(root, 'app') });
   assert.equal(w.path, path.join(root, '.claude', 'worktrees', 'p1-A'));
-  assert.equal(w.branch, 'escadrille/p1/A');
+  assert.equal(w.branch, 'calmdev/p1/A');
   assert.equal(w.cwd, path.join(w.path, 'app'));
-  assert.equal(sh(w.path, ['branch', '--show-current']), 'escadrille/p1/A');
+  assert.equal(sh(w.path, ['branch', '--show-current']), 'calmdev/p1/A');
   assert.ok(readFileSync(path.join(root, '.git', 'info', 'exclude'), 'utf8').includes('.claude/worktrees/'));
   assert.equal(sh(root, ['status', '--porcelain']), '');
   const again = await create({ root, plan: 'p1', session: 'A', path: root });
@@ -43,7 +44,26 @@ test('merge brings the branch back with --no-ff and removes the worktree but kee
   assert.ok(existsSync(path.join(root, 'b.txt')));
   await remove({ root, path: w.path });
   assert.ok(!existsSync(w.path));
-  assert.equal(sh(root, ['branch', '--list', w.branch]).trim(), 'escadrille/p1/A');
+  assert.equal(sh(root, ['branch', '--list', w.branch]).trim(), 'calmdev/p1/A');
+});
+
+test('a session whose escadrille/… branch exists keeps it, a new one gets calmdev/…; both merge, neither is renamed', async () => {
+  const root = repo();
+  sh(root, ['branch', 'escadrille/p1/OLD']); // made before the rename (BLK, 7 November)
+  const old = await create({ root, plan: 'p1', session: 'OLD' });
+  const neu = await create({ root, plan: 'p1', session: 'NEW' });
+  assert.equal(old.branch, 'escadrille/p1/OLD'); assert.equal(neu.branch, 'calmdev/p1/NEW');
+  assert.equal(sh(old.path, ['branch', '--show-current']), 'escadrille/p1/OLD');
+  writeFileSync(path.join(old.path, 'old.txt'), 'o\n'); sh(old.path, ['add', '.']); sh(old.path, ['commit', '-qm', 'old']);
+  writeFileSync(path.join(neu.path, 'new.txt'), 'n\n'); sh(neu.path, ['add', '.']); sh(neu.path, ['commit', '-qm', 'new']);
+  assert.deepEqual(await merge({ root, branch: old.branch, message: `Merge ${old.branch}: ancienne` }), { ok: true });
+  assert.deepEqual(await merge({ root, branch: neu.branch, message: `Merge ${neu.branch}: nouvelle` }), { ok: true });
+  assert.ok(existsSync(path.join(root, 'old.txt')) && existsSync(path.join(root, 'new.txt')));
+  assert.equal(sh(root, ['branch', '--list', 'calmdev/p1/OLD']), '', 'the old branch is never renamed');
+  assert.deepEqual(sh(root, ['branch', '--merged', 'main', '--format=%(refname:short)']).split('\n').filter((b) => names.isSessionBranch(b)).sort(), ['calmdev/p1/NEW', 'escadrille/p1/OLD']);
+  // the QA's search of a plan's merges (server.mjs, git log --grep) finds both forms
+  const merges = sh(root, ['log', '--format=%s', '--fixed-strings', ...names.BRANCH_PREFIXES.flatMap((b) => ['--grep', `${b}p1/`])]).split('\n');
+  assert.deepEqual(merges.sort(), ['Merge calmdev/p1/NEW: nouvelle', 'Merge escadrille/p1/OLD: ancienne']);
 });
 
 test('merge goes through uncommitted work on other files, and refuses naming the files the branch also touches', async () => {
@@ -108,15 +128,15 @@ test('create never prunes the other worktrees: only its own stale entry goes; un
   renameSync(x.path, x.path + '-elsewhere'); // X's folder out of sight, as from a sandbox: a global prune would drop its entry
   mkdirSync(path.join(root, '.claude', 'worktrees', 'p-Y')); // a leftover empty folder, not registered
   const y = await create({ root, plan: 'p', session: 'Y' });
-  assert.equal(sh(y.path, ['branch', '--show-current']), 'escadrille/p/Y');
+  assert.equal(sh(y.path, ['branch', '--show-current']), 'calmdev/p/Y');
   assert.ok(existsSync(admin('p-X')), "X's admin entry is still there");
   const z = await create({ root, plan: 'p', session: 'Z' });
   rmSync(z.path, { recursive: true, force: true }); // Z's own folder gone: its own stale entry is replaced
   const z2 = await create({ root, plan: 'p', session: 'Z' });
-  assert.equal(sh(z2.path, ['branch', '--show-current']), 'escadrille/p/Z');
+  assert.equal(sh(z2.path, ['branch', '--show-current']), 'calmdev/p/Z');
   assert.ok(existsSync(admin('p-X')), 'still there after Z came back');
   renameSync(x.path + '-elsewhere', x.path);
-  assert.equal(sh(x.path, ['branch', '--show-current']), 'escadrille/p/X', 'X works again once its folder is back');
+  assert.equal(sh(x.path, ['branch', '--show-current']), 'calmdev/p/X','X works again once its folder is back');
   assert.ok(process.env.NODE_TEST_CONTEXT, 'node --test sets NODE_TEST_CONTEXT');
   const own = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
   await assert.rejects(create({ root: own, plan: 'p', session: 'danger' }), /dépôt du serveur/);

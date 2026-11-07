@@ -61,7 +61,7 @@ const sum = (a, k) => a.reduce((s, x) => s + x[k], 0);
 
 // ---------------------------------------------------------------- A. the conversations
 const conversations = async () => {
-  const dir = path.join(ROOT, '-Users-gab-Dev-escadrille'); const out = [];
+  const dir = path.join(ROOT, '-Users-dev-Dev-escadrille'); const out = [];
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir).filter((f) => f.endsWith('.jsonl'))) {
     const p = path.join(dir, name); const st = statSync(p); if (st.mtimeMs < span(DAYS[0])[0]) continue;

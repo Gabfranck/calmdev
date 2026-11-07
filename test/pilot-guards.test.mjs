@@ -28,14 +28,14 @@ test('(1) an allow:true on an out-of-sandbox request is refused with the way tha
   assert.equal(other.refuse(k).muted, false); assert.equal(other.refuse(k).muted, true);
 });
 
-test('(2) the pilot grants only a read-only request; writes, runs and installs go up to the developer', () => {
+test('(2) POL: the pilot grants what the rule allows by its target; what it does not know goes up to the developer', () => {
   const ask = (rule, allow = true) => ({ kind: 'permission', tool: 'Bash', input: { command: 'x' }, suggest: { allow, reason: '', rule } });
-  assert.equal(decideAnswer({ entry: ask('read-only'), mode: 'guide', allow: true }).ok, true);
-  for (const rule of ['write-inside', 'local-run', 'local-bin', 'git-local', 'local-host', null]) {
-    const d = decideAnswer({ entry: ask(rule), mode: 'autonome', allow: true });
-    assert.equal(d.ok, false, `${rule} refused`); assert.equal(d.dev, true); assert.match(d.why, /lecture seule/); assert.match(d.why, /À toi/);
+  for (const rule of ['read-only', 'write-inside', 'local-run', 'local-bin', 'git-local']) assert.equal(decideAnswer({ entry: ask(rule), mode: 'guide', allow: true }).ok, true, `${rule} granted`);
+  for (const entry of [ask('write-guarded', null), ask(null, null)]) {
+    const d = decideAnswer({ entry, mode: 'autonome', allow: true });
+    assert.equal(d.ok, false, `${entry.suggest.rule} refused`); assert.equal(d.dev, true); assert.match(d.why, /ne dit pas oui/); assert.match(d.why, /À toi/);
   }
-  assert.equal(decideAnswer({ entry: { kind: 'permission', tool: 'Write', input: { file_path: '/w/a.mjs' }, suggest: null }, mode: 'autonome', allow: true }).ok, false, 'no rule said read-only: up to the developer');
+  assert.equal(decideAnswer({ entry: { kind: 'permission', tool: 'Write', input: { file_path: '/w/a.mjs' }, suggest: null }, mode: 'autonome', allow: true }).ok, false, 'no rule said yes: up to the developer');
   assert.equal(decideAnswer({ entry: ask('write-inside'), mode: 'autonome', allow: false }).ok, true, 'the pilot may still refuse');
 });
 
