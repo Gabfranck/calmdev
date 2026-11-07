@@ -1,0 +1,14 @@
+[package]
+name = "calmdev"
+version = "0.1.0"
+description = "calmdev on the desktop: one window on the local server"
+edition = "2021"
+rust-version = "1.77.2"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"

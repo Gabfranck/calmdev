@@ -1,0 +1,35 @@
+{
+  "plan": {
+    "id": "2026-11-01-quick-wins-linear",
+    "title": "Quick wins de Linear",
+    "base": "dev",
+    "goal": "Quatre tickets Linear, une PR par ticket.",
+    "waves": [{ "n": 1, "title": "Vague 1" }],
+    "sessions": [
+      { "id": "A", "name": "Le minuteur des quiz", "wave": 1, "model": "claude-sonnet-5-5", "tickets": ["ORC-88"], "stops": ["Le plan", "La PR prête"], "prompt": "Seed." },
+      { "id": "B", "name": "Les avatars par défaut", "wave": 1, "model": "claude-sonnet-5-5", "tickets": ["ORC-91", "ORC-92"], "stops": ["Le plan", "La PR prête"], "prompt": "Seed." },
+      { "id": "C", "name": "Le score en direct", "wave": 1, "model": "claude-opus-5-5", "tickets": ["ORC-95"], "stops": ["Le plan", "La PR prête"], "prompt": "Seed." },
+      { "id": "D", "name": "La page d’accueil élève", "wave": 1, "model": "claude-sonnet-5-5", "tickets": ["ORC-80"], "stops": ["Le plan", "La PR prête"], "prompt": "Seed." }
+    ]
+  },
+  "state": [
+    { "id": "A", "name": "Le minuteur des quiz", "stops": [0, 1], "claude": "Regarde src/quiz/Timer.tsx et la capture docs/timer.png", "summary": "Fait : le minuteur, ses tests, la capture. PR prête.\nReste : rien.", "worktree": { "branch": "escadrille/quick-wins/A", "merged": false }, "usage": { "input": 812000, "output": 41000, "cost": 2.31, "context": 0.34 } },
+    { "id": "B", "name": "Les avatars par défaut", "stops": [0, 1], "claude": "Regarde public/avatars/ et docs/avatars.png", "summary": "Fait : six avatars par défaut, le choix au premier lancement. PR prête.\nReste : rien.", "worktree": { "branch": "escadrille/quick-wins/B", "merged": false }, "usage": { "input": 1240000, "output": 66000, "cost": 3.4, "context": 0.41 } },
+    { "id": "C", "name": "Le score en direct", "stops": [0, 1], "claude": "Regarde src/live/Score.tsx", "summary": "Fait : le score en direct sur le tableau. PR prête.\nReste : rien.", "worktree": { "branch": "escadrille/quick-wins/C", "merged": false }, "usage": { "input": 950000, "output": 52000, "cost": 4.1, "context": 0.52 } },
+    { "id": "D", "name": "La page d’accueil élève", "stops": [0, 1], "claude": "Regarde src/home/", "summary": "Fait : la page d’accueil élève. PR prête.\nReste : rien.", "worktree": { "branch": "escadrille/quick-wins/D", "merged": false }, "usage": { "input": 620000, "output": 30000, "cost": 1.6, "context": 0.22 } }
+  ],
+  "prs": {
+    "2026-11-01-quick-wins-linear/D": { "url": "https://github.com/GabFranck/Orchard/pull/11", "number": 11, "at": "2026-11-01T09:10:00Z", "tickets": [{ "identifier": "ORC-80", "state": "À revoir", "ok": true, "error": null }] }
+  },
+  "fail": { "C": "git push failed: ! [rejected] escadrille/quick-wins/C -> escadrille/quick-wins/C (non-fast-forward)" },
+  "ticketFail": { "ORC-92": "Linear: Entity not found: Issue ORC-92" },
+  "linear": { "key": true, "state": "À revoir" },
+  "connectors": [
+    { "name": "GitHub", "kind": "gh", "scope": "pousse la branche d’une session finie, ouvre sa PR", "where": "gh connecté sur ce Mac (son trousseau)", "ready": true, "key": false },
+    { "name": "Linear", "kind": "linear", "scope": "passe les tickets de la session en « À revoir »", "where": "clé dans ~/.config/escadrille, hors de tout dépôt", "ready": true, "key": true }
+  ],
+  "out": [
+    { "host": "api.github.com", "why": "ouvrir la PR d’une session finie", "by": "sur clic seulement" },
+    { "host": "api.linear.app", "why": "passer un ticket en « À revoir »", "by": "sur clic seulement" }
+  ]
+}

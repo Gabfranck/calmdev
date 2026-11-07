@@ -1,0 +1,76 @@
+# Tests and trace scan on every pull request and every push to main or dev (docs/ci.md).
+# Read-only: this workflow writes nothing on GitHub, publishes nothing, and needs no secret to pass.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    # Runs only in the public repository, where Actions minutes are free (macOS counts tenfold in a private one).
+    if: github.repository == 'Gabfranck/calmdev'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      # Tests that need claude, a browser, the developer's Mac or the network skip themselves under CI=true
+      # (the list is in docs/ci.md); they are never deleted.
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.13'
+      - name: Git identity for the tests that commit in a temporary repository
+        run: |
+          git config --global user.name 'CI'
+          git config --global user.email 'ci@example.invalid'
+          git config --global init.defaultBranch main
+      - name: Linux sandbox tools (bubblewrap, socat), as install.sh --check asks
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap socat
+          # Ubuntu 24.04 restricts the unprivileged user namespaces bwrap needs
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: node --test
+        run: node --test 'test/*.test.mjs'
+
+  trace-scan:
+    name: Trace scan
+    # The private repository carries its own traces on purpose (decisions, plans): the scan guards the public one.
+    if: github.repository == 'Gabfranck/calmdev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.13'
+      # The private names (clients, colleagues) are never committed: they come from the TRACE_WORDS secret, a JSON
+      # array of regular expressions. Without it (a pull request from a fork gets no secret) the scan still checks
+      # secrets, home folders, phones and LAN addresses, and says so.
+      - name: Scan the tracked files for private traces
+        env:
+          TRACE_WORDS: ${{ secrets.TRACE_WORDS }}
+        run: |
+          if [ -n "$TRACE_WORDS" ]; then
+            node -e 'process.stdout.write(JSON.stringify({ traceWords: JSON.parse(process.env.TRACE_WORDS) }))' > "$RUNNER_TEMP/trace-words.json"
+            node scripts/trace-scan.mjs --fixtures --words "$RUNNER_TEMP/trace-words.json"
+          else
+            echo "::warning::TRACE_WORDS secret absent: private names are not checked, only secrets, homes, phones and LAN addresses."
+            node scripts/trace-scan.mjs --fixtures
+          fi

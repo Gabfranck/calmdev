@@ -1,0 +1,1 @@
+A fake ~/.claude/sessions for test/usage.test.mjs. 104 and 105 are .key files alone: the test sets their mtime (104 near a1, so seen; 105 on 2026-10-31T22:00Z, unseen).

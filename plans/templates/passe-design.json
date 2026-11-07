@@ -1,0 +1,20 @@
+{
+ "id": "passe-design",
+ "title": "Passe design écran par écran",
+ "summary": "Captures avant, taste skill, retouches UI sans changement UX, captures après, une PR par écran ou par app.",
+ "idea": "Passe design sur [écrans] de [apps], vers [branche de base].\nPour chaque écran : captures avant, retouches avec le taste skill (taste-skill:design-taste-frontend), uniquement de l'UI, aucun changement d'UX ni de comportement, captures après aux trois largeurs, une PR par écran ou par app.",
+ "hints": [
+  "Une session par app ou par groupe d'écrans, dossiers distincts ; jamais deux sessions sur le même fichier. Chaque session charge taste-skill:design-taste-frontend et suit references/app-screens.md pour un écran d'app.",
+  "Ordre dans chaque session : captures avant (inspect.mjs --app aux trois largeurs), retouches, captures après, puis comparaison ; elle montre les chemins des images, jamais une description.",
+  "Retouches UI seulement : espacements, typographie, couleurs, états, alignements. Pas de changement d'UX, de texte fonctionnel, de route ni de comportement ; si un écran en demande, elle le note à part au lieu de le faire.",
+  "Premier arrêt tôt : les captures avant et la liste des retouches prévues, de genre taste. Un arrêt de genre taste par écran ou par app avec les captures avant/après.",
+  "Une PR par écran ou par app, vers la branche de base ; rien de fusionné sans l'accord du développeur.",
+  "Modèles : Fable 5.1 pour le jugement de design, Sonnet 5.5 pour les captures et les vérifications.",
+  "Demande la liste des écrans et des apps, la branche de base, et ce que le développeur trouve le plus laid."
+ ],
+ "fields": [
+  { "key": "écrans", "label": "Les écrans à reprendre" },
+  { "key": "apps", "label": "Les apps ou dossiers concernés" },
+  { "key": "branche de base", "label": "La branche de base des PR" }
+ ]
+}

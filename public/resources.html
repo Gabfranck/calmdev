@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="res.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* Ressources (docs/resources.md, docs/phase9/direction.md §6): what the developer gives a project. One action, « Ajouter »;
+   four sections in this order: Ce qui attend (capabilities to switch on in one click), Fichiers et textes, Skills (the
+   disabled ones folded), Capacités à ajouter (10 at most); the rest (plugins, connectors, folders) folded in one line.
+   The home's standard (session B): sections 32 px apart, one line of 44 px per resource on --raised, radius 8, a 28 px
+   button at the right, the detail on demand (the line opens). Empty: the section and its title stay, one grey sentence. */
+.sec { margin-bottom: 32px; max-width: 920px; }
+.sec h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; font-size: var(--fs-section); font-weight: 600; }
+.sec h2 .n { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.sec .none { color: var(--muted); }
+.rows { display: grid; gap: 2px; }
+.rrow { background: var(--raised); border-radius: var(--radius-card); }
+.rrow > summary { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 44px; padding: 6px 12px; color: var(--text); font-size: var(--fs-body); font-weight: 400; border-radius: var(--radius-card); }
+.rrow > summary::before { flex: none; }
+.rrow .t { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.rrow .t b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+.rrow .t .d { color: var(--muted); font-size: var(--fs-small); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.rrow .t .pill { height: 20px; font-weight: 400; }
+.rrow .acts { display: flex; gap: 4px; }
+.rrow .acts .btn { height: 28px; padding: 0 10px; font-size: var(--fs-small); }
+.rrow .acts .btn.ghost { padding: 0 6px; }
+.rrow .body { display: grid; gap: 6px; padding: 2px 12px 14px 36px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+.rrow .body code { background: var(--surface); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.rrow .body .p { color: var(--muted); overflow-wrap: anywhere; }
+.rrow .body .w { color: var(--faint); }
+.rrow .body .what { color: var(--text); font-size: var(--fs-body); }
+.note-edit { display: flex; gap: 8px; margin-top: 4px; }
+.note-edit .control { flex: 1; height: 28px; font-size: var(--fs-small); }
+.note-edit .btn { height: 28px; font-size: var(--fs-small); }
+.confirm { margin-top: 4px; padding: 10px 12px; border-radius: var(--radius-control); background: var(--surface); display: grid; gap: 8px; color: var(--text); }
+.confirm code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; background: var(--raised); padding: 6px 8px; border-radius: 4px; }
+.confirm .row { display: flex; gap: 8px; } .confirm .row .btn { height: 28px; font-size: var(--fs-small); }
+.skilltext { margin-top: 4px; max-height: 320px; overflow: auto; padding: 10px 12px; background: var(--surface); border-radius: var(--radius-control); font: 12px/18px var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.fold { margin-top: 2px; }
+.fold > summary { padding: 8px 12px; color: var(--muted); font-size: var(--fs-small); font-weight: 400; }
+.fold > summary:hover { color: var(--text); }
+.fold .rows { margin-top: 2px; }
+.also { margin-bottom: 32px; max-width: 920px; }
+.also > summary { padding: 6px 0; color: var(--muted); font-size: var(--fs-body); font-weight: 400; }
+.also > summary:hover { color: var(--text); }
+.also .sec { margin: 16px 0 0 18px; }
+/* the add panel: a file or a pasted text, its one-line note; the title's button turns into « Annuler » while it shows */
+.add { margin: -4px 0 32px; max-width: 920px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--card-pad); display: grid; gap: 14px; }
+.add[hidden] { display: none; }
+.drop { display: grid; place-items: center; gap: 4px; min-height: 96px; border: 1px dashed var(--control); border-radius: var(--radius-control); color: var(--muted); text-align: center; cursor: pointer; padding: 16px; transition: background-color var(--t-hover) ease; }
+.drop:hover, .drop.over { background: var(--raised); }
+.drop b { color: var(--text); font-weight: 500; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.add textarea.control { min-height: 88px; padding: 8px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); resize: vertical; width: 100%; }
+.add .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.add .row .control { flex: 1 1 320px; }
+.add .hint { color: var(--faint); font-size: var(--fs-small); }
+.add .err { color: var(--negative); font-size: var(--fs-small); }
+@media (max-width: 640px) {
+  .rrow > summary { grid-template-columns: 12px minmax(0, 1fr); grid-template-areas: 'chev t' '. acts'; gap: 6px 12px; padding: 10px 12px; }
+  .rrow > summary::before { grid-area: chev; } .rrow .t { grid-area: t; flex-wrap: wrap; } .rrow .acts { grid-area: acts; }
+  .rrow .t .d { white-space: normal; flex-basis: 100%; }
+  .rrow .body { padding-left: 12px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 data-i18n="res.title" data-i18n-attr="title:res.titleHint"></h1><p class="sub" id="lede"></p></div><button class="btn primary" id="addBtn" aria-expanded="false" aria-controls="add"></button></div>
+      <form class="add" id="add" hidden>
+        <label class="drop" id="drop"><input type="file" id="file"><b id="dropLabel" data-i18n="res.drop"></b><span class="hint" data-i18n="res.dropHint"></span></label>
+        <textarea class="control" id="text" data-i18n-attr="aria-label:res.paste;placeholder:res.paste"></textarea>
+        <div class="row"><input class="control" id="note" maxlength="300" data-i18n-attr="aria-label:res.noteAria;placeholder:res.notePh"><button class="btn primary" id="save" type="submit" data-i18n="res.add"></button></div>
+        <p class="err" id="err" hidden></p>
+      </form>
+      <div id="res"></div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const P = window.escadrilleProjects;
+let project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || null;
+const q = () => 'project=' + encodeURIComponent(project);
+const call = async (path, body, method = 'POST') => { const r = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) }); const j = await r.json().catch(() => ({ error: T('res.unreadable') })); if (!r.ok || j.error) throw new Error(j.error || r.statusText); return j; };
+const size = (n) => n >= 1048576 ? T('size.mb', { n: Math.round(n / 104857.6) / 10 }) : n >= 1024 ? T('size.kb', { n: Math.round(n / 1024) }) : T('size.b', { n });
+const plural = (n, key) => T(key, { n });
+const rel = (p) => (project && p && p.startsWith(project + '/') ? p.slice(project.length + 1) : p);
+const home = (p) => String(p || '').replace(/^\/Users\/[^/]+/, '~');
+const keyed = (prefix, ids) => new Proxy({}, { get: (o, k) => (ids.includes(k) ? T(prefix + k) : undefined) });
+const KIND = keyed('res.k.', ['text', 'table', 'image', 'pdf', 'other']);
+const CAPKIND = keyed('res.c.', ['mcp', 'plugin', 'skill', 'connector']);
+const MAX_CAPS = 10;
+let data = null; let caps = null;
+
+// ---- one line per resource: the name, a pill, a grey detail, the buttons; the body on demand
+const line = ({ id, name, pill, detail, acts = '', body = '' }) => `<details class="rrow" data-row="${esc(id)}"><summary><span class="t"><b>${name}</b>${pill ? `<span class="pill">${pill}</span>` : ''}${detail ? `<span class="d">${detail}</span>` : ''}</span>${acts ? `<span class="acts">${acts}</span>` : '<span></span>'}</summary><div class="body">${body}<div data-slot="${esc(id)}" hidden></div></div></details>`;
+const section = (title, n, rows, empty, extra = '') => `<section class="sec" aria-label="${esc(title)}"><h2>${esc(title)}${n ? `<span class="n">${n}</span>` : ''}</h2>${rows.length ? `<div class="rows">${rows.join('')}</div>` : `<p class="none">${empty}</p>`}${extra}</section>`;
+const readBy = (w) => `<span class="w">${esc(T('res.readBy', { who: T(w) }))}</span>`;
+
+const capLine = (c, oneClick) => line({ id: 'cap-' + (c.activate ? c.activate.name : c.name), name: esc(c.name), pill: CAPKIND[c.kind] || esc(c.kind), detail: esc(c.what),
+  acts: oneClick ? `<button class="btn" data-act="${esc(c.activate.type)}" data-name="${esc(c.activate.name)}">${esc(T('res.activate'))}</button>` : '',
+  body: `<span class="what">${esc(c.what)}</span><span class="p">${esc(c.why)}</span>${oneClick ? '' : `<span class="w">${esc(T('res.network'))} · <code>${esc(c.how)}</code></span>`}` });
+const skillLine = (s) => line({ id: 'skill-' + s.name, name: esc(s.name), pill: esc(T(s.enabled ? (s.scope === 'project' ? 'res.project' : 'res.user') : 'res.offHere')), detail: esc(s.description),
+  acts: `<button class="btn ghost" data-read="${esc(s.name)}">${esc(T('res.read'))}</button><button class="btn" data-skill="${esc(s.name)}" data-on="${s.enabled ? 0 : 1}">${esc(T(s.enabled ? 'res.deactivate' : 'res.activate'))}</button>`,
+  body: `<span class="p"><code>${esc(home(rel(s.path)))}</code></span>${readBy(s.enabled ? 'res.bySessionsPlanner' : 'res.nobody')}` });
+const fileLine = (f) => line({ id: 'file-' + f.rel, name: esc(f.rel.split('/').pop()), pill: esc(`${KIND[f.kind]} · ${size(f.size)}`), detail: f.note ? esc(f.note) : esc(T('res.noNote')),
+  acts: `<button class="btn ghost" data-note="${esc(f.rel)}">${esc(T('res.note'))}</button>${f.added ? `<button class="btn ghost" data-del="${esc(f.rel)}">${esc(T('res.remove'))}</button>` : ''}`,
+  body: `<span class="p"><code>${esc(f.rel)}</code></span>${readBy('res.byPlannerSessions')}` });
+
+const view = () => {
+  const r = data; const items = caps && !caps.error ? caps.items : [];
+  const waiting = items.filter((c) => c.activate); const toAdd = items.filter((c) => !c.activate).slice(0, MAX_CAPS);
+  const texts = [
+    r.memory.file ? line({ id: 'memory', name: esc(rel(r.memory.file)), pill: esc(T('res.memory')), detail: esc(plural(r.memory.lines, 'res.lines')), acts: `<a class="btn ghost" href="/?${q()}#memoire">${esc(T('res.open'))}</a>`, body: readBy('res.byMemory') }) : '',
+    r.rules.file ? line({ id: 'rules', name: esc(rel(r.rules.file)), pill: esc(T('res.rules')), detail: esc(plural(r.rules.count, 'res.rulesN')), body: readBy('res.byRules') }) : '',
+    ...r.files.map(fileLine),
+  ].filter(Boolean);
+  const on = r.skills.filter((s) => s.enabled); const off = r.skills.filter((s) => !s.enabled);
+  const also = [
+    section(T('res.plugins'), r.plugins.length, r.plugins.map((p) => line({ id: 'plugin-' + p.name, name: esc(p.name.split('@')[0]), pill: esc(T(p.enabled ? 'res.on' : 'res.off')), detail: esc(p.name) + (p.file ? ' · ' + esc(home(rel(p.file))) : ''), body: readBy(p.enabled ? 'res.bySessions' : 'res.nobody') })), T('res.noPlugin')),
+    section(T('res.connectors'), r.connectors.length, r.connectors.map((c) => line({ id: 'conn-' + c.name, name: esc(c.name), detail: esc(c.why), body: readBy('res.byServer') })), T('res.noConnector')),
+    section(T('res.dirs'), r.addDirs.length, r.addDirs.map((d) => line({ id: 'dir-' + d, name: esc(home(d)), body: readBy('res.byAddDir') })), T('res.noDir')),
+  ];
+  const alsoN = r.plugins.length + r.connectors.length + r.addDirs.length;
+  $('res').innerHTML = [
+    section(T('res.waiting'), waiting.length, waiting.map((c) => capLine(c, true)), T(caps ? (caps.error ? 'res.capsError' : 'res.nothingWaits') : 'res.loading')),
+    section(T('res.files'), texts.length, texts, T('res.noFile')),
+    section(T('res.skills'), r.skills.length, on.map(skillLine), off.length ? '' : T('res.noSkill'), off.length ? `<details class="fold" id="fold-off" ${location.hash === '#skills' ? 'open' : ''}><summary>${esc(plural(off.length, 'res.skillsOff'))}</summary><div class="rows">${off.map(skillLine).join('')}</div></details>` : ''),
+    section(T('res.toAdd'), toAdd.length, toAdd.map((c) => capLine(c, false)), T(caps ? (caps.error ? 'res.unavailable' : 'res.nothingToAdd') : 'res.loading'), caps && caps.rule ? `<p class="none" style="margin-top:8px">${esc(caps.rule)}</p>` : ''),
+    `<details class="also" id="also"><summary>${esc(T('res.also', { a: plural(r.plugins.length, 'res.pluginsN'), b: plural(r.connectors.length, 'res.connectorsN'), c: plural(r.addDirs.length, 'res.dirsN') }))}</summary>${also.join('')}</details>`,
+  ].join('');
+  const total = r.skills.length + r.files.length + (r.memory.file ? 1 : 0) + (r.rules.file ? 1 : 0) + alsoN;
+  $('lede').textContent = T('res.lede', { name: P.name(project), n: total });
+};
+
+const load = async () => {
+  const open = [...document.querySelectorAll('details[open]')].map((d) => d.dataset.row || d.id).filter(Boolean);
+  // the resources and the capabilities together: one render, never a section left on « Lecture… »
+  const [r, c] = await Promise.all([call('/api/resources?' + q(), null, 'GET').catch((e) => ({ error: e.message })), caps ? caps : call('/api/resources/capabilities?' + q(), null, 'GET').catch(() => ({ rule: '', items: [], error: true }))]);
+  if (r.error) { $('lede').textContent = r.error; return; }
+  // a full render replaces the button that was pressed: the focus goes to the button of the same data-* (cause B)
+  const a = document.activeElement; const back = a && a.closest && a.closest('#res') && a.matches('button') ? sameButton(a) : null;
+  data = r; caps = c; view();
+  for (const id of open) { const d = document.querySelector(`details[data-row="${CSS.escape(id)}"]`) || $(id); if (d) d.open = true; }
+  if (back) refocus(back);
+};
+
+// ---- the add panel: a file (read here, sent in base64) or a pasted text, and its one-line note
+// Escape is « Annuler » (public/ux.js): the form empties, the focus goes back to the button
+const UX = window.escadrilleUX;
+const addPanel = (show) => { const was = !$('add').hidden; $('add').hidden = !show; const b = $('addBtn'); b.setAttribute('aria-expanded', String(show)); b.textContent = T(show ? 'res.cancel' : 'res.add'); b.classList.toggle('primary', !show);
+  if (show) { if (!was && UX) UX.open($('add'), { trigger: b, close: cancelAdd }); $('note').focus(); } else if (UX) UX.close($('add'), { focus: false }); };
+const cancelAdd = () => { $('add').reset(); picked = null; $('dropLabel').textContent = T('res.drop'); $('err').hidden = true; addPanel(false); };
+$('addBtn').onclick = () => { if (!$('add').hidden) { cancelAdd(); $('addBtn').focus(); } else addPanel(true); };
+let picked = null;
+const pick = (f) => { if (!f) return; picked = f; $('dropLabel').textContent = `${f.name} · ${size(f.size)}`; $('err').hidden = true; };
+$('file').onchange = (e) => pick(e.target.files[0]);
+for (const ev of ['dragenter', 'dragover']) document.addEventListener(ev, (e) => { e.preventDefault(); if ($('add').hidden) addPanel(true); $('drop').classList.add('over'); });
+document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) $('drop').classList.remove('over'); });
+document.addEventListener('drop', (e) => { e.preventDefault(); $('drop').classList.remove('over'); pick(e.dataTransfer.files[0]); });
+const b64 = (f) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = ko; r.readAsDataURL(f); });
+$('add').onsubmit = async (e) => {
+  e.preventDefault(); const text = $('text').value; const note = $('note').value.trim(); $('err').hidden = true;
+  if (!picked && !text.trim()) { $('err').textContent = T('res.empty'); $('err').hidden = false; return; }
+  if (picked && picked.size > 20 * 1048576) { $('err').textContent = T('res.tooBig'); $('err').hidden = false; return; }
+  $('save').disabled = true;
+  try {
+    const r = await call('/api/resources/file', picked ? { project, name: picked.name, base64: await b64(picked), note } : { project, text, note });
+    picked = null; $('add').reset(); $('dropLabel').textContent = T('res.drop'); addPanel(false); await load();
+    const d = r.file && document.querySelector(`details[data-row="${CSS.escape('file-' + r.file.rel)}"]`); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); }
+  } catch (er) { $('err').textContent = er.message; $('err').hidden = false; } finally { $('save').disabled = false; }
+};
+
+// ---- the actions inside the lines (a button in a summary must not fold the line)
+const slotOf = (id) => document.querySelector(`[data-slot="${CSS.escape(id)}"]`);
+// A button of a line opens its row and its slot: one layer (public/ux.js). Escape gives back what the click found (the
+// slot hidden, the row folded if it was), and the focus to the button; after a full render, to the button of the same data-*
+const sameButton = (b) => { const k = ['read', 'skill', 'act', 'note', 'del'].find((x) => b.dataset[x] !== undefined); return k ? `button[data-${k}="${CSS.escape(b.dataset[k])}"]` : null; };
+const refocus = (sel) => { const n = sel && document.querySelector(sel); if (n) n.focus(); };
+const openRow = (el, slot) => { const d = el.closest('details'); if (!d) return; const was = d.open; d.open = true;
+  if (UX) UX.open(slot || d, { trigger: el, restore: sameButton(el), close: () => { if (slot) slot.hidden = true; if (!was) d.open = false; } }); };
+const doneSlot = (slot) => { if (UX) UX.close(slot, { focus: false }); };
+const confirmBox = (slot, pv, onYes, sel) => { slot.hidden = false; slot.className = 'confirm'; slot.innerHTML = `<span>${esc(T('res.lineWritten', { file: '\u0001' })).replace('\u0001', `<b>${esc(home(rel(pv.file)))}</b>`)}</span><code>${esc(pv.line)}</code><span class="row"><button class="btn" data-yes>${esc(T('res.confirm'))}</button><button class="btn ghost" data-no>${esc(T('res.cancel'))}</button></span>`;
+  slot.querySelector('[data-yes]').onclick = async () => { doneSlot(slot); await onYes(); refocus(sel); }; slot.querySelector('[data-no]').onclick = () => { slot.hidden = true; doneSlot(slot); refocus(sel); }; slot.querySelector('[data-yes]').focus(); };
+$('res').addEventListener('click', async (e) => {
+  const b = e.target.closest('button'); if (!b) return; e.preventDefault();
+  try {
+    if (b.dataset.read) { const slot = slotOf('skill-' + b.dataset.read); if (!slot.hidden && slot.className === 'skilltext') { slot.hidden = true; doneSlot(slot); return; } openRow(b, slot); const s = await call(`/api/resources/skill?${q()}&name=${encodeURIComponent(b.dataset.read)}`, null, 'GET'); slot.className = 'skilltext'; slot.textContent = s.text; slot.hidden = false; }
+    if (b.dataset.skill) { const name = b.dataset.skill; const enabled = b.dataset.on === '1'; const slot = slotOf('skill-' + name); openRow(b, slot); const r = await call('/api/resources/skill', { project, name, enabled });
+      if (r.preview) confirmBox(slot, r.preview, async () => { await call('/api/resources/skill', { project, name, enabled, confirm: true }); await load(); }, sameButton(b)); }
+    if (b.dataset.act) { const name = b.dataset.name; const path = '/api/resources/' + b.dataset.act; const slot = slotOf('cap-' + name); openRow(b, slot); const r = await call(path, { project, name, enabled: true });
+      if (r.preview) confirmBox(slot, r.preview, async () => { await call(path, { project, name, enabled: true, confirm: true }); caps = null; await load(); }, sameButton(b)); }
+    // Supprimer: a confirmation in place, never confirm(); Escape is « Annuler »
+    if (b.dataset.del) { const rel = b.dataset.del; const slot = slotOf('file-' + rel); openRow(b, slot); slot.hidden = false; slot.className = 'confirm';
+      slot.innerHTML = `<span>${esc(T('res.delete', { f: rel }))}</span><span class="row"><button class="btn" data-yes>${esc(T('res.removeYes'))}</button><button class="btn ghost" data-no>${esc(T('res.cancel'))}</button></span>`;
+      slot.querySelector('[data-no]').onclick = () => { slot.hidden = true; doneSlot(slot); b.focus(); };
+      slot.querySelector('[data-yes]').onclick = async () => { doneSlot(slot); await call(`/api/resources/file?${q()}&path=${encodeURIComponent(rel)}`, null, 'DELETE'); await load(); refocus('#addBtn'); };
+      slot.querySelector('[data-no]').focus(); }
+    if (b.dataset.note) { const slot = slotOf('file-' + b.dataset.note); if (!slot.hidden && slot.className === 'note-edit') return; const f = data.files.find((x) => x.rel === b.dataset.note); openRow(b, slot);
+      slot.className = 'note-edit'; slot.hidden = false; slot.innerHTML = `<input class="control" maxlength="300" aria-label="${esc(T('res.noteOf', { f: f.rel }))}" value="${esc(f.note)}"><button class="btn" type="button" data-keep>${esc(T('res.keep'))}</button>`;
+      const sel = sameButton(b); const input = slot.querySelector('input'); input.focus(); const keep = async () => { doneSlot(slot); await call('/api/resources/note', { project, path: f.rel, note: input.value }); await load(); refocus(sel); };
+      slot.querySelector('[data-keep]').onclick = keep; input.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); keep(); } }; }
+  } catch (er) { alert(er.message); }
+});
+
+// ---- the shell: the one sidebar (sidebar.js) carries the project picker, every link and the menu on a phone
+const shell = async () => {
+  const got = await fetch('/api/projects').then((r) => r.json()).catch(() => ({})); const projects = Array.isArray(got) ? got : got.projects || []; // { projects: [...] }
+  if (!project && projects.length) project = projects[0].path;
+  document.title = T('res.docTitle', { name: P.name(project) }); $('crumb').textContent = T('res.title');
+  window.escadrilleSidebar.render($('sidebar'), { project });
+};
+$('addBtn').textContent = T('res.add'); $('lede').textContent = T('res.loading');
+escadrilleI18n.onChange(() => { const open = !$('add').hidden; $('addBtn').textContent = T(open ? 'res.cancel' : 'res.add'); document.title = T('res.docTitle', { name: P.name(project) }); $('crumb').textContent = T('res.title'); if (project) { caps = null; load(); } }); // the capabilities' texts come from the server
+shell().then(() => { if (!project) { $('lede').textContent = T('res.pickFolder'); return; } localStorage.setItem('escadrille.project', project); load(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faux site · connexion</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1c1d1f; background: #f6f5f2; }
+  main { max-width: 420px; margin: 0 auto; padding: 48px 24px; }
+  input, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #c9c6bf; display: block; width: 100%; margin: 8px 0; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Connexion élève</h1>
+  <input id="user" placeholder="Identifiant" autocomplete="off">
+  <input id="pass" type="password" placeholder="Mot de passe">
+  <button id="go">Se connecter</button>
+  <p id="msg"></p>
+</main>
+<script>
+  // The fixture's only account: eleve.test / sesame (the tests put them in the environment, never in a journey)
+  document.getElementById('go').addEventListener('click', () => {
+    const u = document.getElementById('user').value, p = document.getElementById('pass').value;
+    if (u === 'eleve.test' && p === 'sesame') { sessionStorage.setItem('user', u); location.href = 'app.html'; }
+    else document.getElementById('msg').textContent = 'Identifiants refusés';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faux site · jouer</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1c1d1f; background: #f6f5f2; }
+  main { max-width: 900px; margin: 0 auto; padding: 48px 24px; }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .card { background: #fff; border-radius: 14px; padding: 20px; min-height: 120px; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+  @media (prefers-color-scheme: dark) { body { background: #15191e; color: #f4f6f8; } .card { background: #232a33; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="titre">Connecte-toi d'abord</h1>
+  <div id="jeu" hidden>
+    <p>Choisis ton mode de jeu</p>
+    <div class="grid"><div class="card">Aventure</div><div class="card">Défis solo</div><div class="card">Affrontements</div><div class="card">Évaluations</div></div>
+    <p>Clé brute volontaire : pages.play.title</p>
+  </div>
+</main>
+<script>
+  const u = sessionStorage.getItem('user');
+  if (u) { document.getElementById('titre').textContent = 'Bienvenue ' + u; document.getElementById('jeu').hidden = false; }
+</script>
+</body>
+</html>

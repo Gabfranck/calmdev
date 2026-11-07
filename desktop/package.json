@@ -1,0 +1,15 @@
+{
+  "name": "calmdev-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "calmdev on the desktop: one Tauri window on the local server (docs/desktop.md)",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "scripts": {
+    "dev": "tauri dev",
+    "build:debug": "tauri build --debug --bundles app",
+    "icons": "node scripts/icons.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}

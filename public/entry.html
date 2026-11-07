@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="entry.title"></title>
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/entry.css">
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><b id="crumb" data-i18n="entry.title"></b></span><span class="spacer"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="en" id="entry">
+        <div class="title-row"><div><h1 data-i18n="entry.title"></h1><p class="sub" data-i18n="entry.sub"></p></div></div>
+        <div class="en-thread" aria-live="polite"></div>
+        <div class="en-compose">
+          <form novalidate><div class="en-box"><textarea rows="1" autofocus data-i18n-attr="aria-label:entry.aria;placeholder:entry.ph"></textarea><button class="btn primary" type="submit" data-i18n="entry.send"></button></div></form>
+          <p class="en-err" role="alert"></p>
+        </div>
+      </div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/entry.js"></script>
+<script>
+// The entry screen (docs/entry.md): the routes /api/entry live in lib/entry.mjs, mounted by server.mjs (docs/entry-server.diff)
+const call = async (path, body) => { const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}); const j = await r.json().catch(() => ({ error: r.statusText })); if (!r.ok || j.error) throw new Error(j.error || r.statusText); return j; };
+window.escadrilleEntry.mount(document.getElementById('entry'), { call });
+</script>
+</body>
+</html>

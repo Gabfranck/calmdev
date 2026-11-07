@@ -1,0 +1,242 @@
+/* The Conversation, the home of the app (public/mainchat.js; docs/phase11/ux.md §8, the mock-up docs/phase11/accueil.html
+   validated by Dev on 2026-11-02): the app's tokens, nothing of its own.
+   Grid at 1440: canvas 1440 − 240 − 8 − 48 = 1144 = thread 760 + 24 + status 360. One column under 1100 px. */
+.mc-cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); gap: 24px; align-items: stretch; flex: 1; min-height: 0; }
+.mc-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* like any messaging app: the page does not scroll, the thread does, oldest at the top, the composer always at the foot of the column */
+html.mc-home .app { height: 100svh; } html.mc-home .frame { height: 100svh; min-height: 0; } html.mc-home .sheet, html.mc-home .canvas.chat { min-height: 0; }
+.mc-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-right: 4px; }
+
+/* the title row: the state sentence under the title (`escadrille · 2 en cours · 1 t'attend · 24,10 $ aujourd'hui`, the
+   figures in mono), the search at the right, 240 px; the skeleton of a figure not yet read */
+.title-row .sub .num { font-weight: 600; }
+.title-row .sub .skel, .status .skel { display: inline-block; width: 2.2em; height: .8em; border-radius: 4px; background: var(--active); vertical-align: -0.1em; }
+.title-row:has(.mc-search) > div { flex: 1 1 auto; min-width: 0; } .title-row:has(.mc-search) .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+input.mc-search { width: 240px; flex: none; margin-left: auto; } /* input.control of app.css says 100 %: the same specificity wins here */
+
+/* « À toi »: one line each, a button each; nothing waiting = one grey line */
+.await { display: grid; gap: 4px; }
+.await .line { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 44px; padding: 0 12px 0 10px; border-radius: var(--radius-card); background: var(--raised); }
+.await .badge { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; font: 500 13px var(--mono); background: var(--pill-wait-bg); color: var(--pill-wait-ink); }
+.await .badge.n { background: var(--active); color: var(--text); font-family: var(--font); }
+.await .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .await .t span { color: var(--muted); }
+.await .btn { height: 28px; padding: 0 10px; font-size: var(--fs-small); }
+/* a refused merge, a silent pilot: the line says why and the path that works, wrapped, never cut */
+.await .line.has-note { align-items: start; padding-top: 8px; padding-bottom: 8px; }
+.await .line.has-note .t, .await .line.has-note .t[data-tip] { white-space: normal; display: block; -webkit-line-clamp: none; overflow: visible; } /* the phone's two-line clamp would hide the conflict */
+.await .t .await-note { display: block; margin-top: 4px; color: var(--pill-err-ink, #c2410c); font-size: var(--fs-small); line-height: 1.45; overflow-wrap: anywhere; }
+.await-more { display: block; padding: 6px 12px 0; color: var(--muted); font-size: var(--fs-small); text-decoration: none; } .await-more:hover, .await-more:focus-visible { color: var(--text); }
+.await-none { color: var(--muted); margin: 0; }
+/* the plannings with no answer for more than 12 h: one folded grey line, the same lines on a click (Escape folds it back) */
+.await-old { margin: 8px 0 0; } .await-old > summary { padding: 0; color: var(--muted); font-size: var(--fs-small); cursor: pointer; list-style: none; } .await-old > summary::-webkit-details-marker { display: none; }
+.await-old > summary::before { content: '▸ '; width: auto; height: auto; border: 0; transform: none; } .await-old[open] > summary::before { content: '▾ '; } .await-old > summary:hover, .await-old > summary:focus-visible { color: var(--text); } .await-old > .await { margin: 8px 0 0; }
+
+/* the thread: the day sticky, the developer right in a bubble, Claude left on a 68-character measure */
+.mc-thread { display: grid; gap: 8px; }
+.mc-day { position: sticky; top: 0; z-index: 1; margin: 18px 0 2px; padding: 6px 0; background: var(--surface); font-size: var(--fs-small); font-weight: 600; color: var(--muted); }
+.mc-day:first-child { margin-top: 0; }
+.mc-src { margin: 6px 0 -4px; color: var(--faint); font-size: 12px; }
+.mc-msg { display: grid; justify-items: start; max-width: 100%; }
+.mc-msg:focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.mc-msg .mc-text { min-width: 0; max-width: 100%; line-height: 22px; overflow-wrap: anywhere; }
+.mc-msg.claude .mc-text { max-width: 68ch; }
+.mc-msg.dev { justify-items: end; }
+.mc-msg.dev .mc-text { max-width: min(620px, 86%); padding: 10px 14px; background: var(--raised); border-radius: 12px 12px 4px 12px; }
+.mc-msg .mc-text p { margin: 0 0 6px; } .mc-msg .mc-text p:last-child { margin: 0; }
+.mc-msg .mc-text h2, .mc-msg .mc-text h3, .mc-msg .mc-text h4 { font-size: var(--fs-section); font-weight: 600; margin: 14px 0 6px; line-height: 22px; }
+.mc-msg .mc-text ul, .mc-msg .mc-text ol { margin: 0 0 10px; padding-left: 22px; }
+.mc-msg .mc-text code { background: var(--raised); padding: 1px 5px; border-radius: 4px; font: 13px/18px var(--mono); }
+.mc-msg.dev .mc-text code { background: var(--active); }
+.mc-msg .mc-text pre { margin: 0 0 10px; padding: 10px 12px; background: var(--raised); border-radius: var(--radius-control); overflow: auto; white-space: pre; }
+.mc-msg .mc-text pre code { background: none; padding: 0; }
+.mc-msg .mc-text blockquote { margin: 0 0 10px; padding: 2px 0 2px 12px; border-left: 3px solid var(--control); color: var(--muted); }
+.mc-msg .mc-text strong { font-weight: 600; }
+.mc-msg .mc-text mark { background: var(--accent-tint); color: inherit; border-radius: 2px; }
+.mc-msg .mc-text.clamped { max-height: 264px; overflow: hidden; }
+.mc-more { margin-top: 4px; font-size: var(--fs-small); color: var(--muted); }
+/* the hour: always there, 12 px faint (nothing appears on hover, nothing moves: the mock-up) */
+.mc-meta { display: block; margin: 2px 2px 0; color: var(--faint); font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; }
+.mc-wait { color: var(--pill-wait-ink); }
+.mc-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.mc-links a { font-size: var(--fs-small); color: var(--text); background: var(--raised); border-radius: 999px; padding: 2px 10px; text-decoration: none; }
+.mc-links a:hover, .mc-links a:focus-visible { background: var(--active); }
+/* a system line (« Planification lancée · Ouvrir », « Plan lancé… »): 13 px, faint, centred on the column */
+.mc-sys { color: var(--faint); font-size: var(--fs-small); margin: 4px 0; text-align: center; }
+.mc-sys a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; } .mc-sys a:hover, .mc-sys a:focus-visible { color: var(--text); }
+.mc-sys time { font-variant-numeric: tabular-nums; }
+.mc-older { margin: 0 0 12px; font-size: var(--fs-small); }
+.mc-count { color: var(--muted); font-size: var(--fs-small); margin: 0 0 12px; }
+.mc-empty { max-width: 560px; padding: 8px 0 8px; color: var(--muted); line-height: 22px; }
+.mc-form { flex: none; background: var(--surface); }
+.mc-form .composer { position: static; margin-top: 12px; padding: 8px 0 0; }
+.mc-form .composer textarea { min-height: 48px; }
+/* an empty project (first run): the sentence in 16 px, then four starting points in the room of the thread; the composer
+   stays at the foot of the column as on an active project (Dev, 2026-11-02) */
+/* …the sentence and the 2 × 2 grid sit in the middle of the room, both ways; the grid keeps a fixed width (Dev, 2026-11-02).
+   Contrast: the title --text on --surface (light 16:1, dark 15:1), the line --muted on --surface (light 5.9:1, dark 8.4:1): AA. */
+.mc-scroll.mc-first { display: grid; align-content: safe center; justify-items: center; } /* safe: a column taller than the screen (the first run's question) starts at its top, never cut */
+.mc-first .mc-body { width: 100%; display: grid; justify-items: center; }
+.mc-first .mc-empty { padding: 24px 0; max-width: 560px; text-align: center; }
+.mc-first .mc-empty p { font-size: var(--fs-section); line-height: 24px; color: var(--text); }
+.mc-start { display: grid; grid-template-columns: repeat(2, 264px); gap: 10px; margin: 24px auto 0; justify-content: center; }
+.mc-start-item { display: grid; gap: 4px; text-align: left; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; min-width: 0; transition: background-color var(--t-hover) ease; }
+.mc-start-item:hover, .mc-start-item:focus-visible { background: var(--raised); }
+.mc-start-item b { font-size: 15px; font-weight: 500; line-height: 20px; color: var(--text); }
+.mc-start-item span { color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+
+/* the composer's bar: Dicter and the Pilote switch on the left (its state in grey), the one primary on the right; the
+   state line between them (« Le pilote lit. », an error) takes the room */
+.mc-pilot { display: inline-flex; align-items: center; gap: 8px; min-height: var(--control-height); padding: 0 6px; cursor: pointer; font-size: var(--fs-small); color: var(--text); user-select: none; min-width: 0; }
+.mc-pilot input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.mc-switch { flex: none; position: relative; width: 30px; height: 18px; border-radius: 999px; background: var(--control); transition: background var(--t-ui) var(--ease-out); }
+.mc-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); transition: transform var(--t-ui) var(--ease-out); }
+.mc-pilot input:checked + .mc-switch { background: var(--primary); }
+.mc-pilot input:checked + .mc-switch::after { transform: translateX(12px); }
+.mc-pilot input:focus-visible + .mc-switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mc-pilot-state { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* the folded line under the composer (the mock-up): `Opus 5.5 · Partir d'un gabarit · Importer…`, plain faint words
+   with a middot between, no chevron; each opens in place and takes the row below the line */
+.under { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-top: 10px; color: var(--faint); font-size: var(--fs-small); }
+.under .keys { margin-left: auto; }
+.mc-under { min-width: 0; }
+.mc-under > summary { display: inline-flex; list-style: none; color: var(--faint); font-weight: 400; font-size: var(--fs-small); line-height: 20px; transition: color var(--t-hover) ease; }
+.mc-under > summary::-webkit-details-marker { display: none; }
+.mc-under > summary::before { content: none; display: none; }
+.mc-under:not([open]) + .mc-under:not([open]) > summary::before { content: "·"; display: inline; width: auto; height: auto; border: 0; transform: none; margin: 0 10px 0 -6px; }
+.mc-under > summary:hover, .mc-under > summary:focus-visible, .mc-under[open] > summary { color: var(--text); }
+.mc-under[open] { flex-basis: 100%; order: 9; }
+.mc-under-body { margin-top: 8px; padding: 12px 16px; background: var(--raised); border-radius: var(--radius-card); color: var(--text); font-size: var(--fs-body); }
+.mc-under-body .field { max-width: 320px; }
+.mc-note { color: var(--muted); font-size: var(--fs-small); margin: 0 0 8px; line-height: 20px; }
+.mc-note b { color: var(--text); font-weight: 500; }
+/* a planning in « À toi »: Abandonner (quiet) then Répondre, on one line */
+.mc-acts { display: inline-flex; gap: 4px; align-items: center; }
+/* a sentence that only names a setting: the setting offered in one line above the composer, nothing planned */
+.mc-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 8px; padding: 8px 12px; border-radius: var(--radius-card); background: var(--raised); font-size: var(--fs-body); }
+.mc-offer .t { flex: 1 1 200px; min-width: 0; }
+.mc-offer .linkish { border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: var(--fs-small); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; min-height: 32px; }
+.mc-offer .linkish:hover { color: var(--text); }
+.mc-files { list-style: none; margin: 0; padding: 0; }
+.mc-file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px; min-height: var(--row-height); padding: 6px 0; }
+.mc-file + .mc-file { border-top: 1px solid var(--border); }
+.mc-file-main { display: grid; min-width: 0; }
+.mc-file-first { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-file-sub { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mc-file-state { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* no project: one field, one button; the select wears the sidebar picker's chevron, not the system one */
+.mc-pick { display: flex; flex-wrap: wrap; gap: var(--gap); max-width: 560px; }
+.mc-pick select.control { flex: 1 1 260px; width: auto; padding-right: 28px; appearance: none; -webkit-appearance: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23596069' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; }
+.mc-pick select.control:hover { border-color: var(--muted); }
+.mc-pick input.control { flex: 1 1 260px; } .mc-pick select ~ input.control { flex-basis: 100%; } .mc-pick input[hidden] { display: none; }
+.mc-pick-err { flex: 1 1 100%; min-height: 18px; margin: 0; color: var(--negative); font-size: var(--fs-small); line-height: 18px; } /* the server's refusal of a folder, in words */
+.mc-pick ~ .pl-fold, .mc-first .pl-fold { display: none; } /* the pilot's folded line (pilotlog.js): nothing to point at without a project, one sentence only on an empty project */
+
+/* the status beside the thread (ux.md §8, GET /api/status): a column of 14 px lines, no cells, no card, no shadow but
+   the floating card's; blocks 24 px apart under a 13 px title. The only tint is the accent on the bars. Loading: the
+   final layout with a grey bar the size of each figure. */
+.status { align-self: start; position: sticky; top: 16px; display: grid; gap: 24px; min-width: 0; }
+.status, .status section, .status .limits, .status .lim, .status .lim .line { min-width: 0; }
+.status h2 { font-size: var(--fs-small); font-weight: 500; color: var(--faint); margin-bottom: 8px; }
+.status .nm { color: var(--faint); font-size: var(--fs-small); line-height: 18px; margin: 0; }
+.status .nm a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; } .status .nm a:hover, .status .nm a:focus-visible { color: var(--text); }
+.status .nm + .nm, .status .limits + .nm { margin-top: 10px; }
+/* Maintenant: the figures alone, one line (`2 en cours · 1 t'attend · 3 à venir`); on hover or focus of the block the
+   sessions' lines, in a card floating over the panel, never pushing it (Dev, 2026-11-02 02:15); the card floats, so it
+   carries the one shadow of the screen. Tab goes from the line into the card and out of it, both ways. */
+.status .now { position: relative; }
+.status .now .figs { margin: 0; font-variant-numeric: tabular-nums; border-radius: 4px; cursor: default; line-height: 20px; } .status .now .figs b { font-weight: 500; }
+.status .now .figs:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.status .now .rows { display: none; position: absolute; z-index: 30; left: -12px; right: -12px; top: calc(100% - 4px); padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+.status .now:hover .rows, .status .now:focus-within .rows { display: grid; }
+.status .row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 34px; padding: 2px 0 6px; position: relative; font-size: var(--fs-body); color: var(--text); text-decoration: none; border-radius: 4px; }
+.status .row:hover .n, .status .row:focus-visible .n { text-decoration: underline; text-underline-offset: 3px; }
+.status .row .badge { width: 24px; height: 24px; border-radius: 6px; background: var(--raised); display: grid; place-items: center; font: 500 12px var(--mono); }
+.status .row .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status .row .c { color: var(--muted); font-size: var(--fs-small); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.status .row .c.wait { color: var(--pill-wait-ink); font-family: var(--font); }
+.status .row .track { grid-column: 2 / -1; height: 2px; background: var(--rule); border-radius: 1px; } .status .row .track i { display: block; height: 100%; background: var(--accent); border-radius: 1px; }
+.status .row.later .badge { background: none; border: 1px dashed var(--control); } .status .row.later .n, .status .row.later .c { color: var(--muted); }
+.status .more { display: inline-block; margin: 4px 0 2px; color: var(--muted); font-size: var(--fs-small); text-decoration: underline; text-underline-offset: 3px; } .status .more:hover, .status .more:focus-visible { color: var(--text); }
+/* Claude (lib/limits.mjs): one line per limit of the account, the name and its share in 14 px, when it resets at the
+   right in grey; the 6 px bar at the true share on --active, the soft threshold a 2 px mark in --warning, the hard one
+   in --negative; a crossed row takes its colour on the bar and figure. Not measured: one grey line, no bar. */
+.status .limits { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.status .lim { display: grid; gap: 4px; }
+.status .lim .line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.status .lim .line b { font-weight: 500; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status .lim .line .m { flex: none; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status .lim .track { position: relative; height: 6px; border-radius: 3px; background: var(--active); }
+.status .lim .track i { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); border-radius: 3px; }
+.status .lim .th { position: absolute; top: -2px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; text-decoration: none; }
+.status .lim .th.soft { background: var(--warning); } .status .lim .th.hard { background: var(--negative); }
+.status .lim.soft .track i { background: var(--warning); } .status .lim.soft .line b .num { color: var(--warning); }
+.status .lim.hard .track i { background: var(--negative); } .status .lim.hard .line b .num { color: var(--negative); }
+.status .lim .lim-say { margin: 0; font-size: var(--fs-body); line-height: 20px; border-radius: 4px; text-wrap: pretty; } .status .lim .lim-say:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status .lim .lim-say .num { font-weight: 500; }
+.status .lim.unmeasured .lim-say { color: var(--muted); }
+.status .lim .lead-note { color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.status .lim.soft .lead-note { color: var(--warning); } .status .lim.hard .lead-note { color: var(--negative); }
+.status .lim-alert { margin: 0 0 10px; font-size: var(--fs-small); line-height: 18px; font-weight: 500; }
+.status .lim-alert.soft { color: var(--warning); } .status .lim-alert.hard { color: var(--negative); }
+/* Garde: one line folded, the detail in four grey lines with their links */
+.status details.guard > summary { display: block; font-size: var(--fs-body); font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 14px; position: relative; }
+.status details.guard > summary::before { position: absolute; left: 2px; top: 7px; }
+.status details.guard > summary b { color: var(--text); font-weight: 500; }
+.status details.guard .b { display: grid; gap: 6px; padding: 10px 0 0 14px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+.status details.guard .b a { color: var(--text); font-weight: 500; } .status details.guard .b a:hover, .status details.guard .b a:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
+/* À toi, at the foot of the column under a rule (Dev, 2026-11-02) */
+.status .side-wait { border-top: 1px solid var(--border); padding-top: 16px; }
+.status .side-wait .await > * { flex-wrap: wrap; row-gap: 6px; }
+/* under 1100 px: one line above the thread (`2 en cours · 1 t'attend · quota 31 % ›`), the same blocks in a sheet */
+.status-line, .status-sheet { display: none; }
+@media (max-width: 1100px) {
+  .mc-cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .mc-cols > .status { display: none; }
+  .status-line { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: center; order: -1; margin: -8px 0 16px; padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--fs-small); line-height: 20px; text-align: left; cursor: pointer; }
+  .status-line b { color: var(--text); font-weight: 500; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .status-line::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); margin-left: 2px; }
+  .status-sheet[open] { display: block; width: min(100vw - 32px, 420px); max-height: calc(100svh - 32px); margin: auto; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); color: var(--text); overflow: auto; }
+  .status-sheet::backdrop { background: rgba(21, 25, 30, .3); }
+  .status-sheet .status { position: static; }
+  .status-sheet .now .rows { position: static; display: grid; left: auto; right: auto; padding: 8px 0 0; border: 0; box-shadow: none; } /* in the sheet the sessions are read, not hovered */
+  .status-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  .status-sheet-head h2 { font-size: var(--fs-section); font-weight: 600; }
+  .status-sheet-head .btn { height: 28px; padding: 0 10px; font-size: var(--fs-small); }
+}
+@media (max-width: 860px) {
+  .mc-search { display: none; }
+  .mc-pilot-state { display: none; }
+}
+@media (max-width: 640px) {
+  .mc-start { grid-template-columns: minmax(0, 1fr); width: 100%; }
+  .mc-file { grid-template-columns: minmax(0, 1fr) auto; }
+  .mc-file-state { display: none; }
+  .mc-msg.dev .mc-text { max-width: 92%; }
+  /* the phone: the lines wrap on two lines at most, the button stays at the right; the thread keeps its height */
+  .await .line { padding: 6px 10px; gap: 10px; }
+  .await .t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 18px; }
+  .mc-scroll { padding-right: 0; }
+  .under .keys { display: none; }
+  .composer .bar { flex-wrap: wrap; }
+}
+
+/* Phase 8 A, the pilot (docs/pilot.md): the card « Plan proposé » */
+.mc-card { width: min(520px, 100%); margin-top: 8px; padding: 14px 16px; background: var(--raised); border-radius: var(--radius-card); }
+.mc-card h3 { margin: 0 0 8px; font-size: var(--fs-section); font-weight: 600; line-height: 22px; }
+.mc-card ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 2px; }
+.mc-card li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; line-height: 22px; }
+.mc-card li b { font-weight: 500; font-family: var(--mono); font-size: 13px; }
+.mc-card ul.folded li:nth-child(n+5) { display: none; } /* a long plan: four sessions, then « + n sessions » */
+.mc-card-fold { margin: -4px 0 8px; font-size: var(--fs-small); color: var(--muted); } .mc-card-fold:hover, .mc-card-fold:focus-visible { color: var(--text); }
+.mc-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mc-card-num, .mc-card-sum { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.mc-card-sum { margin: 0 0 12px; }
+.mc-card-act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.mc-card-more { color: var(--muted); font-size: var(--fs-small); }
+.mc-card-more a, .mc-card-more .card-link { color: var(--muted); font-size: inherit; }
+.mc-card-more a:hover, .mc-card-more .card-link:hover, .mc-card-more a:focus-visible, .mc-card-more .card-link:focus-visible { color: var(--text); }
+.mc-card-state { font-size: var(--fs-small); font-weight: 600; }
+.mc-card.replaced { opacity: .6; }
+.mc-card.replaced h3 { text-decoration: line-through; }

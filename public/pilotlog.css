@@ -1,0 +1,43 @@
+/* Phase 8 D, the pilot's log (public/pilotlog.js, docs/pilotlog.md): the app's tokens, nothing of its own */
+.pl-fold { margin: 16px 0 0; max-width: 860px; font-size: var(--fs-small); }
+.pl-fold a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.25em; min-height: var(--control-height); }
+.pl-fold a::before { content: "›"; display: inline-block; width: 14px; }
+.pl-fold a:hover, .pl-fold a:focus-visible { color: var(--text); }
+.pl-n { font-variant-numeric: tabular-nums; }
+.pl-model { max-width: 860px; margin: -8px 0 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; font-size: var(--fs-small); color: var(--muted); }
+.pl-model-fold { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 0.25em; min-height: var(--control-height); }
+.pl-model-fold::before { content: "›"; display: inline-block; width: 14px; transition: transform 0.15s; }
+.pl-model-fold[aria-expanded="true"]::before { transform: rotate(90deg); }
+.pl-model-fold:hover, .pl-model-fold:focus-visible { color: var(--text); }
+.pl-model-fold:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.pl-model-pick { display: inline-flex; align-items: center; gap: 8px; }
+.pl-model-pick select { min-height: var(--control-height); font: inherit; }
+
+.pl-log { max-width: 860px; }
+.pl-day { position: sticky; top: 0; z-index: 1; margin: 24px 0 4px; padding: 6px 0; background: var(--surface); font-size: var(--fs-small); font-weight: 600; color: var(--muted); }
+.pl-day:first-child { margin-top: 0; }
+.pl-list { list-style: none; margin: 0; padding: 0; }
+/* one row: the time (48), the line (the rest), the session's chip (40) */
+.pl-row { display: grid; grid-template-columns: minmax(48px, auto) minmax(0, 1fr) 40px; column-gap: 12px; align-items: center; min-height: var(--row-height); }
+.pl-row + .pl-row { border-top: 1px solid var(--rule); }
+.pl-time { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-line { min-width: 0; padding: 10px 0; text-align: left; font: inherit; color: var(--text); background: none; border: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 22px; }
+.pl-line b { font-weight: 600; }
+button.pl-line { cursor: pointer; border-radius: var(--radius-control); }
+button.pl-line::after { content: "›"; display: inline-block; margin-left: 8px; color: var(--faint); transition: transform var(--t-ui) var(--ease-out); }
+.pl-row.open button.pl-line::after { transform: rotate(90deg); }
+button.pl-line:hover { color: var(--accent); }
+button.pl-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pl-chip { justify-self: end; flex: none; min-width: 28px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--pill-neutral-bg); color: var(--pill-neutral-ink); font-family: var(--mono); font-size: 12px; font-weight: 500; text-decoration: none; white-space: nowrap; transition: background var(--t-hover); }
+a.pl-chip:hover { background: var(--active); color: var(--text); }
+a.pl-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pl-chip.none { background: none; }
+.pl-why { grid-column: 2 / 4; margin: -4px 0 12px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; white-space: pre-line; overflow-wrap: anywhere; }
+.pl-older { margin: 16px 0 0; }
+.pl-empty { color: var(--muted); max-width: 860px; }
+.pl-skel { height: 14px; margin: 15px 0; border-radius: 4px; background: var(--raised); }
+@media (max-width: 640px) {
+  .pl-row { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 10px; }
+  .pl-line { white-space: normal; }
+  .pl-why { grid-column: 2 / 4; }
+}

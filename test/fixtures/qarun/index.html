@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Faux site · accueil</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1c1d1f; background: #f6f5f2; }
+  main { max-width: 900px; margin: 0 auto; padding: 48px 24px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid #c9c6bf; background: #fff; }
+  .cache { display: none; }
+  @media (prefers-color-scheme: dark) { body { background: #15191e; color: #f4f6f8; } button { background: #232a33; color: inherit; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Faux site de QA</h1>
+  <p>Le premier « Proposer une question » est caché : une QA doit viser le visible.</p>
+  <button class="cache" id="cache" onclick="document.getElementById('etat').textContent = 'Le bouton caché a été cliqué'">Proposer une question</button>
+  <button id="visible" onclick="document.getElementById('etat').textContent = 'Question proposée'">Proposer une question</button>
+  <p id="etat"></p>
+  <label>Recherche <input id="recherche" placeholder="Chercher"></label>
+  <label>Niveau <select id="niveau" onchange="document.getElementById('choix').textContent = 'Niveau : ' + this.options[this.selectedIndex].text"><option value="">—</option><option value="2">Seconde</option><option value="1">Première</option></select></label>
+  <p id="choix"></p>
+  <p><a href="auth.html">Se connecter</a> · <a href="ext.html">Page qui sort du Mac</a></p>
+</main>
+<script>
+  document.getElementById('recherche').addEventListener('input', (e) => { document.getElementById('etat').textContent = 'Recherche : ' + e.target.value; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('etat').textContent = 'Échap reçu'; });
+</script>
+</body>
+</html>

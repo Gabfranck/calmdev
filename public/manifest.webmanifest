@@ -1,0 +1,17 @@
+{
+ "id": "/",
+ "name": "calmdev",
+ "short_name": "calmdev",
+ "description": "The local cockpit for parallel Claude Code sessions.",
+ "start_url": "/",
+ "scope": "/",
+ "display": "standalone",
+ "display_override": ["window-controls-overlay"],
+ "background_color": "#eef2f6",
+ "theme_color": "#eef2f6",
+ "icons": [
+  { "src": "/brand/symbol-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+  { "src": "/brand/icon-1024.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+  { "src": "/brand/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+ ]
+}

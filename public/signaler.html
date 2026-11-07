@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="sig.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* « Signaler un défaut » (docs/phase9/direction.md §6): the one sidebar, no screen marked current; the same title row
+   as every screen (22 px, a grey subtitle: the screen named, the project); one field, one action « Ajouter au
+   backlog »; what was added lands under it; where it is written folds in one line. The column is 680 px, the width
+   of a two-line defect, on the sheet's own left edge. */
+.sg form { max-width: 680px; display: grid; gap: 8px; }
+.sg label { font-weight: 500; }
+.sg textarea { display: block; width: 100%; min-height: 64px; max-height: 140px; padding: 10px 12px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); font: inherit; line-height: 22px; resize: none; }
+.sg textarea::placeholder { color: var(--faint); }
+.sg .act { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-top: 4px; }
+.sg .error { margin-top: 12px; color: var(--negative); max-width: 680px; }
+.sg .done { margin-top: 32px; max-width: 680px; }
+.sg .done header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sg .done h2 { font-size: var(--fs-section); font-weight: 600; }
+.sg .added { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.sg .added li { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: var(--row-height); padding: 8px 12px; border-radius: var(--radius-card); background: var(--raised); line-height: 22px; }
+.sg .added .line { min-width: 0; overflow-wrap: anywhere; }
+.sg .added .n { flex: none; color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.sg .more { margin-top: 24px; }
+.sg .more p { margin-top: 8px; color: var(--muted); font-size: var(--fs-small); overflow-wrap: anywhere; }
+@media (max-width: 860px) {
+  .sg .act .btn { width: 100%; height: 44px; }
+  .sg .act .keys { order: 2; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame sg">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb" data-i18n="sig.h"></b></span><span class="spacer"></span></div>
+    <main class="sheet">
+      <div class="canvas">
+        <div class="title-row"><div><h1 data-i18n="sig.h"></h1><p class="sub"><span id="screen">calmdev</span><span id="projectSep" hidden> · </span><span id="project" hidden></span></p></div></div>
+        <form id="form" novalidate>
+          <label for="defect" data-i18n="sig.label"></label>
+          <textarea id="defect" rows="2" autofocus data-i18n-attr="placeholder:sig.ph" aria-describedby="error"></textarea>
+          <div class="act">
+            <button class="btn primary" id="send" type="submit" data-i18n="sig.send"></button>
+            <span class="keys"><kbd data-i18n="main.enter"></kbd> <span data-i18n="sig.adds"></span> · <kbd data-i18n="esc.shift"></kbd> <kbd data-i18n="main.enter"></kbd> <span data-i18n="esc.shiftEnter"></span></span>
+          </div>
+        </form>
+        <p class="error" id="error" role="alert" hidden></p>
+        <section class="done" id="done" hidden aria-live="polite">
+          <header><h2 id="count"></h2><a class="card-link" id="back" href="/"></a></header>
+          <ul class="added" id="added"></ul>
+        </section>
+        <details class="more"><summary data-i18n="sig.where"></summary><p id="where"></p></details>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>window.escadrilleSidebar.render(document.getElementById('sidebar'));</script>
+<script src="/signaler.js"></script>
+</body>
+</html>

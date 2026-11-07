@@ -1,0 +1,16 @@
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-11-01T07:00:00.000Z","sessionId":"sess-fixture"}
+{"type":"user","uuid":"u1","sessionId":"sess-fixture","entrypoint":"cli","timestamp":"2026-11-01T07:00:01.000Z","message":{"role":"user","content":"<system-reminder>Lis CLAUDE.md</system-reminder>Reprends le pilotage d'Escadrille."}}
+{"type":"assistant","uuid":"a1","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:05.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"je réfléchis en secret"}]}}
+{"type":"assistant","uuid":"a2","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:06.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Je lis l'état."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"user","uuid":"u2","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:07.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"server.mjs"}]}}
+{"type":"user","uuid":"u3","isMeta":true,"sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:08.000Z","message":{"role":"user","content":"Caveat: méta"}}
+{"type":"user","uuid":"u4","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:09.000Z","message":{"role":"user","content":[{"type":"text","text":"<task-notification><task-id>x</task-id></task-notification>"}]}}
+{"type":"user","uuid":"u5","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:10.000Z","message":{"role":"user","content":"[SYSTEM NOTIFICATION] la session B attend"}}
+{"type":"assistant","uuid":"a3","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:11.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Voici où on en est : **trois** sessions tournent."}]}}
+{"type":"attachment","uuid":"q1","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:12.000Z","attachment":{"type":"queued_command","prompt":"Et ajoute la vue Conversation","source_uuid":"zz"}}
+{"type":"assistant","uuid":"a4","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:13.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Entendu, je l'ajoute. Ma clé de test : sk-ant-api03-AbCdEfGh12345678IjKlMnOp."}]}}
+{"type":"assistant","uuid":"s1","isSidechain":true,"sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:14.000Z","message":{"role":"assistant","content":[{"type":"text","text":"un sous-agent parle"}]}}
+{"type":"user","uuid":"u6","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:15.000Z","message":{"role":"user","content":"<command-name>/model</command-name><command-message>model</command-message><command-args>opus</command-args>"}}
+{"type":"user","uuid":"u7","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:16.000Z","message":{"role":"user","content":"<local-command-stdout>Set model to opus</local-command-stdout>"}}
+{"type":"attachment","uuid":"q2","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:16.500Z","attachment":{"type":"queued_command","prompt":"<task-notification>fini</task-notification> la tâche b12 est finie","origin":{"kind":"task-notification"}}}
+{"type":"user","uuid":"u9","sessionId":"sess-fixture","timestamp":"2026-11-01T07:00:16.700Z","message":{"role":"user","content":"Regarde ça :\n<pasted_content id=\"ab12\">\nligne un\nligne deux\n</pasted_content id=\"ab12\"> et voilà"}}

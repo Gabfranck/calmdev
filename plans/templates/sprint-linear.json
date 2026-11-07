@@ -1,0 +1,20 @@
+{
+ "id": "sprint-linear",
+ "title": "Sprint Linear : une PR par ticket et une branche release",
+ "summary": "Les tickets copiés dans un fichier, une branche release par dépôt, une PR par ticket et par dépôt, une seule QA à la fin.",
+ "idea": "Sprint Linear : réaliser les tickets [tickets] dans les dépôts [dépôts].\nCopier les tickets dans un fichier du projet, créer une branche release/<n> par dépôt à partir de [branche de base], ouvrir une PR par ticket et par dépôt vers cette branche release, préparer un kit de PR (titre, description, captures, étapes de test), puis une seule QA à la fin pour moi.",
+ "hints": [
+  "Première session : copier les tickets dans un fichier du projet (docs/ ou .escadrille/), un bloc par ticket avec son identifiant, son texte et ses critères ; les sessions suivantes le lisent au lieu de rappeler Linear. Écris les identifiants dans 'tickets' de chaque session et la branche de base dans 'base' du plan.",
+  "Une branche release/<n> par dépôt, créée une fois, avant la vague 1 ; chaque ticket a sa branche et sa PR vers la release, jamais vers la branche de base directement.",
+  "Découpe par dépôt d'abord, puis par ticket : deux tickets qui touchent les mêmes fichiers vont dans des vagues différentes, jamais en parallèle.",
+  "Un kit de PR par ticket : titre, description, captures ou pages, étapes de test ; un arrêt par PR ouverte pour que le développeur la regarde.",
+  "Une seule QA à la fin, pour le développeur : une session de vérification qui liste les parcours à tester sur la release, après la fusion de toutes les PR ; elle ne fusionne la release dans la branche de base qu'avec son accord (arrêt de genre release).",
+  "Modèles : Opus 5.5 pour le code des tickets, Sonnet 5.5 pour la copie des tickets, les kits de PR et la QA ; Fable 5.1 seulement pour un ticket d'architecture ou de design.",
+  "Demande en un seul groupe : les identifiants des tickets, les dépôts, la branche de base, la convention de nom des branches et des PR, les tests attendus. Chaque trou resté entre crochets dans l'idée devient une question."
+ ],
+ "fields": [
+  { "key": "tickets", "label": "Les tickets (identifiants Linear, ex. ORC-88, ORC-91)" },
+  { "key": "dépôts", "label": "Les dépôts concernés (chemins ou noms)" },
+  { "key": "branche de base", "label": "La branche de base des releases (ex. dev ou main)" }
+ ]
+}

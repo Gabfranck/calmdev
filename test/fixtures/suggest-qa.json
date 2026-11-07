@@ -1,0 +1,42 @@
+[
+  {
+    "id": "sg-session-tab-escape",
+    "titre": "Réponse devinée dans le fil d'une session : Tab accepte, Échap efface sans quitter le champ",
+    "attendu": "B (taste, sans repli) propose « Termine sur preuves » en gris ; Tab le met dans le champ ; vidé puis Échap, le gris part et le focus reste",
+    "compte": "aucun",
+    "largeur": 1440,
+    "etapes": [
+      { "aller": "http://127.0.0.1:3157/suggest-demo.html?focus=session" },
+      { "attendre_texte": "Termine sur preuves" },
+      { "capture": "session-gris" },
+      { "touche": "Tab" },
+      { "attendre": 300 },
+      { "capture": "session-accepte" },
+      { "attendre_texte": "Tu parles à B" },
+      { "touche": "End" },
+      { "remplir": "#text2", "valeur": "" },
+      { "touche": "Backspace" },
+      { "attendre_texte": "Termine sur preuves" },
+      { "touche": "Escape" },
+      { "attendre": 300 },
+      { "capture": "session-echap" },
+      { "remplir": "#text2", "valeur": "ok" },
+      { "capture": "session-focus-garde" }
+    ]
+  },
+  {
+    "id": "sg-main-tab",
+    "titre": "Réponse devinée dans le fil principal, à 390",
+    "attendu": "L'arrêt le plus ancien (A, review) propose son repli « Validé, continue. » ; Tab l'accepte",
+    "compte": "aucun",
+    "largeur": 390,
+    "etapes": [
+      { "aller": "http://127.0.0.1:3157/suggest-demo.html?theme=dark" },
+      { "attendre_texte": "Validé, continue." },
+      { "capture": "main-gris-sombre" },
+      { "touche": "Tab" },
+      { "attendre": 300 },
+      { "capture": "main-accepte-sombre" }
+    ]
+  }
+]

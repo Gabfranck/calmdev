@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="learn.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* Apprentissage (phase 11, PX; docs/learning.md): what Escadrille learned from this project, and a task costed before it
+   is launched. The home's standard (docs/phase11/accueil.html): sections 32 px apart, lines of 44 px on --raised, radius 8,
+   one primary action (« Chiffrer »), figures in mono, the detail on demand. Every class is prefixed lr-. */
+.lr-sec { margin-bottom: 32px; max-width: 920px; }
+.lr-sec h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; font-size: var(--fs-section); font-weight: 600; }
+.lr-sec h2 .n { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.lr-sec .none, .lr-note { color: var(--muted); }
+.lr-note { font-size: var(--fs-small); line-height: 18px; margin-top: 8px; }
+.lr-note code { background: var(--raised); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+/* the composer of the task: the field in a box, the one primary at its right */
+/* minmax(0, 1fr) and min-width: 0: the state line (nowrap) must never widen the box past the canvas on a phone */
+.lr-box { border: 1px solid var(--control); border-radius: var(--radius-card); background: var(--surface); display: grid; grid-template-columns: minmax(0, 1fr); }
+.lr-box > * { min-width: 0; }
+.lr-box:focus-within { border-color: var(--accent); }
+.lr-box textarea { width: 100%; min-height: 72px; max-height: 320px; padding: 12px 14px 4px; border: 0; background: none; resize: vertical; line-height: 22px; display: block; }
+.lr-box textarea:focus { outline: 0; } .lr-box textarea::placeholder { color: var(--faint); }
+.lr-bar { display: flex; align-items: center; gap: 8px; padding: 8px; }
+.lr-bar .lr-state { flex: 1; min-width: 0; color: var(--muted); font-size: var(--fs-small); padding-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-bar .lr-state.bad { color: var(--negative); }
+/* the three formulas: one line each, the chosen one opens on its sessions and its « Lancer »; the figures on one right edge */
+.lr-fml { display: grid; gap: 2px; margin-top: 12px; }
+.lr-row { display: grid; grid-template-columns: 14px 120px minmax(0, 1fr) 88px 128px; gap: 12px; align-items: center; min-height: 44px; padding: 6px 12px; border: 0; border-radius: var(--radius-card); background: var(--raised); color: var(--text); font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.lr-row:hover { background: var(--active); }
+.lr-row[aria-checked="true"] { background: var(--active); }
+.lr-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lr-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--control); background: var(--surface); }
+.lr-row[aria-checked="true"] .lr-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2.5px var(--surface); }
+.lr-name { font-weight: 500; }
+.lr-mod { color: var(--muted); font-size: var(--fs-small); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-cost { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); text-align: right; white-space: nowrap; }
+.lr-pct { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.lr-gain { grid-column: 2 / -1; color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.lr-open { display: grid; gap: 10px; padding: 8px 12px 14px 38px; background: var(--raised); border-radius: 0 0 var(--radius-card) var(--radius-card); margin-top: -2px; }
+.lr-row[aria-checked="true"] { border-radius: var(--radius-card) var(--radius-card) 0 0; }
+.lr-open ul { display: grid; gap: 4px; font-size: var(--fs-small); color: var(--muted); }
+.lr-open li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.lr-open li b { font-family: var(--mono); font-weight: 500; color: var(--text); }
+.lr-open li .c { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lr-open .lr-learn { color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.lr-open .lr-act { display: flex; align-items: center; gap: 16px; }
+.lr-open .lr-act a { color: var(--muted); font-size: var(--fs-small); text-decoration: underline; text-underline-offset: 3px; }
+.lr-done { color: var(--text); font-size: var(--fs-small); }
+/* the preferences: one line each, the developer's marked; the editor opens in place */
+.lr-lines { display: grid; gap: 2px; }
+.lr-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 44px; padding: 8px 12px; background: var(--raised); border-radius: var(--radius-card); line-height: 20px; }
+.lr-line .proof { color: var(--muted); }
+.lr-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.lr-head h2 { margin: 0; }
+.lr-head .btn { height: 28px; padding: 0 10px; font-size: var(--fs-small); }
+.lr-edit { display: grid; gap: 8px; }
+.lr-edit[hidden] { display: none; }
+.lr-edit textarea { width: 100%; min-height: 160px; padding: 10px 12px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); line-height: 22px; resize: vertical; }
+.lr-edit textarea:focus { outline: 0; border-color: var(--accent); }
+.lr-edit .row { display: flex; gap: 8px; align-items: center; }
+.lr-edit .row .lr-saved { color: var(--muted); font-size: var(--fs-small); }
+/* the table of the gaps: 12 px grey headers, figures right-aligned in tabular mono, one rule between rows */
+.lr-table { width: 100%; border-collapse: collapse; }
+.lr-table th { text-align: left; font-weight: 400; font-size: 12px; color: var(--muted); padding: 0 8px 8px 0; white-space: nowrap; }
+.lr-table td { padding: 10px 8px 10px 0; border-top: 1px solid var(--rule); vertical-align: baseline; }
+.lr-table th.r, .lr-table td.r { text-align: right; padding-right: 0; padding-left: 8px; }
+.lr-table td.r { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: var(--fs-small); }
+.lr-table td.r .pill { margin-left: 8px; height: 18px; font-size: 12px; }
+.lr-table td.m { color: var(--muted); }
+.lr-table td b { font-weight: 500; }
+/* the rest, folded in one line */
+.lr-more { max-width: 920px; margin-bottom: 32px; }
+.lr-more > summary { padding: 6px 0; color: var(--muted); font-size: var(--fs-body); font-weight: 400; }
+.lr-more > summary:hover { color: var(--text); }
+.lr-more .lr-sec { margin: 16px 0 0 18px; }
+.lr-more ul { display: grid; gap: 6px; color: var(--muted); line-height: 20px; }
+.lr-more li b { color: var(--text); font-weight: 500; }
+.lr-more li .d { color: var(--faint); font-size: var(--fs-small); }
+@media (max-width: 860px) {
+  .lr-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: 'dot name cost' '. mod pct' '. gain gain'; gap: 2px 10px; padding: 10px 12px; }
+  .lr-dot { grid-area: dot; } .lr-name { grid-area: name; } .lr-mod { grid-area: mod; white-space: normal; } .lr-cost { grid-area: cost; } .lr-pct { grid-area: pct; } .lr-gain { grid-area: gain; }
+  .lr-open { padding-left: 12px; }
+  .lr-table th:nth-child(3), .lr-table td:nth-child(3), .lr-table th:nth-child(7), .lr-table td:nth-child(7) { display: none; }
+  .lr-line { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 data-i18n="learn.title" data-i18n-attr="title:learn.titleHint"></h1><p class="sub" id="lede"></p></div></div>
+      <section class="lr-sec" aria-labelledby="costH">
+        <h2 id="costH" data-i18n="learn.cost.h"></h2>
+        <form id="costForm" novalidate><div class="lr-box"><textarea id="task" rows="3" data-i18n-attr="aria-label:learn.cost.aria;placeholder:learn.cost.ph"></textarea>
+          <div class="lr-bar"><span class="lr-state" id="costState" aria-live="polite"></span><button class="btn primary" id="costBtn" type="submit" data-i18n="learn.cost.btn"></button></div></div></form>
+        <div id="formulas"></div>
+      </section>
+      <div id="learned"></div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const P = window.escadrilleProjects; const UX = window.escadrilleUX;
+let project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || null;
+const q = () => 'project=' + encodeURIComponent(project);
+const call = async (path, body, method = 'POST') => { const r = await fetch(path, { method, headers: { 'content-type': 'application/json' }, body: body && JSON.stringify(body) }); const j = await r.json().catch(() => ({ error: T('learn.cost.unreadable') })); if (!r.ok || j.error) throw new Error(j.error || r.statusText); return j; };
+const modelShort = (id) => String(id || '').replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2').replace(/^./, (c) => c.toUpperCase());
+const money = (x) => (x == null ? '—' : T.usd(x, 2));
+const kindName = (k) => T('learn.kind.' + (k || 'other'));
+const home = (p) => String(p || '').replace(/^\/Users\/[^/]+/, '~');
+const href = (p) => P.withProject(p, project);
+let data = null; let costed = null; let chosen = 'recommended'; let launching = false; let launched = null; let editing = false;
+
+// ---- the costing: the three formulas, one line each; the chosen one shows its sessions, what was learned, « Lancer »
+const modelsLine = (sessions) => { const out = []; for (const s of sessions) { const m = modelShort(s.model); const g = out.find((x) => x.m === m); if (g) g.n++; else out.push({ m, n: 1 }); } return out.map((g) => (g.n > 1 ? `${g.n} × ${g.m}` : g.m)).join(' · '); };
+const gainOf = (f) => { const d = f.delta == null ? null : T.pct(Math.abs(f.delta), 0); if (f.tier === 'recommended') return T('learn.fml.gain.recommended'); if (f.tier === 'frugal') return d && f.delta < 0 ? T('learn.fml.gain.frugal', { d }) : T('learn.fml.gain.frugalFlat'); return d && f.delta > 0 ? T('learn.fml.gain.unlimited', { d }) : T('learn.fml.gain.unlimitedFlat'); };
+const rowHtml = (f) => `<button type="button" class="lr-row" role="radio" aria-checked="${f.tier === chosen}" data-tier="${esc(f.tier)}"><span class="lr-dot" aria-hidden="true"></span><span class="lr-name">${esc(T('plan.fml.' + f.tier))}</span><span class="lr-mod">${esc(T('learn.fml.sessions', { n: f.sessions.length, models: modelsLine(f.sessions) }))}</span><span class="lr-cost">${f.cost == null ? '—' : esc(money(f.cost))}</span><span class="lr-pct">${f.weeklyPct == null ? esc(T('learn.fml.noPct')) : esc(T('learn.fml.pct', { p: T.pct(f.weeklyPct, 1) }))}</span><span class="lr-gain">${esc(gainOf(f))}</span></button>`;
+const openHtml = (f) => {
+  const rows = f.sessions.map((s) => `<li><b>${esc(s.id)}</b><span>${esc(s.name)} · ${esc(modelShort(s.model))}</span><span class="c">${s.cost == null ? esc(T('learn.fml.noCost')) : esc(money(s.cost))}</span></li>`).join('');
+  const learned = f.learned.map((l) => T('learn.fml.learned', { r: T.num(l.ratio, { maximumFractionDigits: 2 }), kind: kindName(l.kind), model: modelShort(l.model), n: l.sessions }));
+  const real = f.sessions.filter((s) => s.real).map((s) => T(s.fromReal ? 'learn.fml.fromReal' : 'learn.fml.real', { n: s.real.sessions, kind: kindName(costed.costing.kind), model: modelShort(s.model), m: money(s.real.median) }));
+  const notes = [...new Set([...learned, ...real])];
+  const act = launched && launched.tier === f.tier
+    ? `<span class="lr-done">${esc(T('learn.fml.launched', { title: launched.title, n: launched.launched.length }))}${launched.queued.length ? ' · ' + esc(T('learn.fml.queued', { n: launched.queued.length })) : ''}</span><a href="${esc(href('/plan/' + encodeURIComponent(launched.plan)))}">${esc(T('learn.fml.seeFlow'))}</a>`
+    : `<button type="button" class="btn primary" data-launch="${esc(f.tier)}" ${launching ? 'disabled' : ''}>${esc(T(launching ? 'learn.fml.launching' : 'learn.fml.launch'))}</button>${launched ? `<a href="${esc(href('/plan/' + encodeURIComponent(launched.plan)))}">${esc(T('learn.fml.seeFlow'))}</a>` : ''}`;
+  return `<div class="lr-open">${rows ? `<ul>${rows}</ul>` : ''}${notes.length ? `<p class="lr-learn">${notes.map(esc).join('<br>')}</p>` : ''}<div class="lr-act">${act}</div></div>`;
+};
+const renderFormulas = () => {
+  const box = $('formulas'); if (!costed) { box.innerHTML = ''; return; }
+  const list = costed.costing.formulas;
+  box.innerHTML = `<div class="lr-fml" role="radiogroup" aria-label="${esc(T('learn.fml.aria'))}">${list.map((f) => rowHtml(f) + (f.tier === chosen ? openHtml(f) : '')).join('')}</div>`;
+  $('costState').className = 'lr-state'; $('costState').textContent = T('learn.cost.kind', { kind: kindName(costed.costing.kind), title: costed.plan.title });
+};
+let costing = false;
+const cost = async () => {
+  const text = $('task').value.trim(); const st = $('costState');
+  if (!text) { st.className = 'lr-state bad'; st.textContent = T('learn.cost.empty'); $('task').focus(); return; }
+  if (costing) return; costing = true; $('costBtn').disabled = true; st.className = 'lr-state'; st.textContent = T('learn.cost.busy');
+  try { const r = await call('/api/costing', { project, text, lang: T.lang }); if (!r.costing) throw new Error(T('learn.cost.unreadable')); costed = r; launched = null; chosen = 'recommended'; renderFormulas(); }
+  catch (e) { costed = null; renderFormulas(); st.className = 'lr-state bad'; st.textContent = T('learn.cost.error', { why: e.message }); }
+  finally { costing = false; $('costBtn').disabled = false; }
+};
+$('costForm').onsubmit = (e) => { e.preventDefault(); cost(); };
+$('task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); cost(); } });
+const choose = (tier) => { if (!costed || tier === chosen) return; chosen = tier; renderFormulas(); const b = document.querySelector(`.lr-row[data-tier="${CSS.escape(tier)}"]`); if (b) b.focus(); };
+$('formulas').addEventListener('click', async (e) => {
+  const r = e.target.closest('.lr-row'); if (r) { choose(r.dataset.tier); return; }
+  const l = e.target.closest('[data-launch]'); if (!l || launching) return;
+  launching = true; renderFormulas();
+  try { const res = await call('/api/costing/launch', { project, text: $('task').value.trim(), lang: T.lang, tier: l.dataset.launch }); launched = { tier: l.dataset.launch, plan: res.plan, title: res.title || costed.plan.title, launched: res.launched || [], queued: res.queued || [] }; }
+  catch (er) { $('costState').className = 'lr-state bad'; $('costState').textContent = er.message; }
+  finally { launching = false; renderFormulas(); const a = document.querySelector('.lr-act a, .lr-act .btn'); if (a) a.focus(); }
+});
+if (UX) UX.roving($('formulas'), '.lr-row');
+
+// ---- what was learned: the preferences (editable in place), the gaps as a table, the rest folded
+const proofSplit = (t) => { const m = /^(.*?)\s*(\((?:preuve|proof)\s*:[^)]*\))\s*$/i.exec(t); return m ? [m[1], m[2]] : [t, '']; };
+const prefsHtml = () => {
+  const p = data.preferences; const d = data.distill;
+  const lines = p.lines.map((l) => { const [t, proof] = proofSplit(l.text); return `<div class="lr-line"><span>${esc(t)}${proof ? ` <span class="proof">${esc(proof)}</span>` : ''}</span>${l.source === 'dev' ? `<span class="pill">${esc(T('learn.prefs.dev'))}</span>` : '<span></span>'}</div>`; }).join('');
+  const when = p.unreadable ? T('learn.prefs.unreadable') : d.running ? T('learn.prefs.distillRunning') : d.due ? T('learn.prefs.distillDue', { n: d.newResults }) : d.reason === 'week' && d.nextAt ? T('learn.prefs.distillNext', { at: T.date(d.lastAt), next: T.ago(d.nextAt) }) : T('learn.prefs.distillWait', { n: d.newResults, t: d.threshold });
+  return `<section class="lr-sec" aria-labelledby="prefsH"><div class="lr-head"><h2 id="prefsH">${esc(T('learn.prefs.h'))}${p.lines.length ? `<span class="n">${p.lines.length}</span>` : ''}</h2>${p.unreadable ? '' : `<button type="button" class="btn ghost" id="prefsEdit" aria-expanded="${editing}" aria-controls="prefsForm">${esc(T(editing ? 'learn.prefs.cancel' : 'learn.prefs.edit'))}</button>`}</div>
+    <form class="lr-edit" id="prefsForm" ${editing ? '' : 'hidden'}><textarea id="prefsText" aria-label="${esc(T('learn.prefs.editAria'))}">${esc(p.lines.map((l) => l.text).join('\n'))}</textarea><div class="row"><button class="btn primary" type="submit" id="prefsSave">${esc(T('learn.prefs.save'))}</button><span class="lr-saved" id="prefsSaved" role="status"></span></div><p class="lr-note">${esc(T('learn.prefs.hint'))}</p></form>
+    ${editing || p.unreadable ? '' : p.lines.length ? `<div class="lr-lines">${lines}</div>` : `<p class="none">${esc(T('learn.prefs.none'))}</p>`}
+    <p class="lr-note"><code>${esc(home(p.file))}</code> · ${esc(when)}</p></section>`;
+};
+const gapHtml = () => {
+  const rows = (data.registry.byKind || []).filter((g) => g.sessions > 0);
+  const applied = new Set(data.estimation.gaps.map((g) => `${g.kind}|${g.model}`));
+  const cells = rows.map((g) => `<tr><td><b>${esc(kindName(g.kind))}</b></td><td class="m">${esc(modelShort(g.model) || '—')}</td><td class="r">${g.sessions}</td><td class="r">${esc(money(g.estimate.median))}</td><td class="r">${esc(money(g.cost.median))}</td><td class="r">${g.ratio.median == null ? '—' : esc('×' + T.num(g.ratio.median, { maximumFractionDigits: 2 }))}${applied.has(`${g.kind}|${g.model}`) ? `<span class="pill pos">${esc(T('learn.gap.applied'))}</span>` : ''}</td><td class="r">${g.firstTryRate == null ? '—' : esc(T.pct(g.firstTryRate, 0))}</td></tr>`).join('');
+  const head = ['kind', 'model', 'sessions', 'estimate', 'real', 'ratio', 'firstTry'].map((k, i) => `<th${i >= 2 ? ' class="r"' : ''}>${esc(T('learn.gap.' + k))}</th>`).join('');
+  return `<section class="lr-sec" aria-labelledby="gapH"><h2 id="gapH">${esc(T('learn.gap.h'))}${rows.length ? `<span class="n">${data.registry.totals.finished}</span>` : ''}</h2>${rows.length ? `<table class="lr-table"><thead><tr>${head}</tr></thead><tbody>${cells}</tbody></table><p class="lr-note">${esc(T('learn.gap.note'))}</p>` : `<p class="none">${esc(T('learn.gap.none'))}</p>`}</section>`;
+};
+const moreHtml = () => {
+  const r = data.registry; const qs = r.questions.filter((x) => x.settled); const refs = r.refusals.items; const defs = r.defects.recent.filter((d) => !d.done);
+  const list = (title, items, empty) => `<section class="lr-sec"><h2>${esc(title)}</h2>${items.length ? `<ul>${items.join('')}</ul>` : `<p class="none">${esc(empty)}</p>`}</section>`;
+  return `<details class="lr-more" id="more"><summary>${esc(T('learn.more.h', { q: qs.length, r: refs.length, d: r.defects.open }))}</summary>
+    ${list(T('learn.more.questions'), qs.map((x) => `<li><b>${esc(x.title || x.question)}</b> <span class="d">· ${esc(T('learn.more.q', { n: x.asked }))}</span>${x.last && x.last.answer ? `<br>${esc(x.last.answer)}` : ''}</li>`), T('learn.more.none'))}
+    ${list(T('learn.more.refusals'), refs.slice(0, 10).map((x) => `<li><b>${esc(x.session)}</b> <span class="d">· ${esc(x.verdict)} · ${esc(T.date(x.at))}</span>${x.body ? `<br>${esc(x.body)}` : ''}</li>`), T('learn.more.none'))}
+    ${list(T('learn.more.defects'), defs.map((x) => `<li>${x.screen ? `<b>${esc(x.screen)}</b> · ` : ''}${esc(x.text)}</li>`), T('learn.more.none'))}</details>`;
+};
+// ---- the fixed context (phase 14, docs/frugal.md « Le contexte fixe »): one folded line, the pieces on demand, an alert above +20 %
+const kOf = (n, d = 0) => T('learn.ctx.k', { k: T.num(n / 1000, { maximumFractionDigits: d }) });
+const signed = (g) => (g > 0 ? '+' : '') + T.pct(g, 0);
+const ctxHtml = () => {
+  const c = data.context; if (!c) return '';
+  const line = c.tokens == null ? T('learn.ctx.none')
+    : c.growth == null ? T('learn.ctx.lineFlat', { k: kOf(c.tokens) })
+    : c.since ? T('learn.ctx.lineSince', { k: kOf(c.tokens), g: signed(c.growth), date: T.date(c.since) })
+    : T('learn.ctx.line', { k: kOf(c.tokens), g: signed(c.growth), days: c.days });
+  const pill = c.alert ? ` <span class="pill neg">${esc(T('learn.ctx.alert', { t: T.pct(c.threshold, 0) }))}</span>` : '';
+  const p = c.pieces; if (!p) return `<details class="lr-more" id="ctx"><summary>${esc(line)}${pill}</summary></details>`;
+  const piece = (label, tokens) => `<li><b>${esc(kOf(tokens, 1))}</b> ${esc(label)}</li>`;
+  const items = [piece(T('learn.ctx.claudeMd'), p.claudeMd.tokens), piece(T('learn.ctx.memory'), p.memory.tokens), piece(T('learn.ctx.skills', { n: p.skills.count }), p.skills.tokens), piece(T('learn.ctx.prompt'), p.prompt.tokens)];
+  if (p.rest != null) items.push(piece(T('learn.ctx.rest'), p.rest));
+  const basis = c.tokens == null ? '' : `<p class="lr-note">${esc(T('learn.ctx.basis', { n: c.sessions, m: c.beforeSessions, days: c.days }))}${c.latest ? ' ' + esc(T('learn.ctx.latest', { k: kOf(c.latest.tokens), at: T.date(c.latest.at) })) : ''}</p>`;
+  return `<details class="lr-more" id="ctx"><summary>${esc(line)}${pill}</summary><section class="lr-sec"><h2>${esc(T('learn.ctx.piecesH', { n: p.charsPerToken }))}</h2><ul>${items.join('')}</ul>${basis}<p class="lr-note">${esc(T('learn.ctx.doc'))}</p></section></details>`;
+};
+const view = () => { const open = !!document.querySelector('#more[open]'); const ctxOpen = !!document.querySelector('#ctx[open]'); $('learned').innerHTML = ctxHtml() + prefsHtml() + gapHtml() + moreHtml(); if (open) $('more').open = true; if (ctxOpen && $('ctx')) $('ctx').open = true; $('lede').textContent = T('learn.lede', { name: P.name(project) }); };
+const load = async () => {
+  const r = await call('/api/learning?' + q(), null, 'GET').catch((e) => ({ error: e.message }));
+  if (r.error) { $('lede').textContent = r.error; return; }
+  data = r; view();
+};
+// The editor is a layer (public/ux.js): Escape is « Annuler », the focus goes back to the button
+const editPrefs = (on) => { editing = on; view(); const b = $('prefsEdit'); if (on) { if (UX) UX.open($('prefsForm'), { trigger: b, restore: '#prefsEdit', close: () => editPrefs(false) }); $('prefsText').focus(); } else { if (UX) UX.close($('prefsForm'), { focus: false }); if (b) b.focus(); } };
+$('learned').addEventListener('click', (e) => { if (e.target.closest('#prefsEdit')) editPrefs(!editing); });
+$('learned').addEventListener('submit', async (e) => {
+  if (e.target.id !== 'prefsForm') return; e.preventDefault(); $('prefsSave').disabled = true;
+  try { data.preferences = await call('/api/learning/preferences', { project, lines: $('prefsText').value.split('\n') }); if (UX) UX.close($('prefsForm'), { focus: false }); editing = false; view(); $('prefsEdit').focus(); }
+  catch (er) { $('prefsSaved').textContent = er.message; $('prefsSave').disabled = false; }
+});
+if (UX) UX.keys([[['⌘', '↵'], T('learn.keys.cost')], [['↑', '↓'], T('learn.keys.rows')]]);
+
+// ---- the shell: the one sidebar (sidebar.js) carries the project picker, every link and the menu on a phone
+const titles = () => { document.title = T('learn.docTitle', { name: P.name(project) }); $('crumb').textContent = T('learn.title'); };
+const shell = async () => {
+  const got = await fetch('/api/projects').then((r) => r.json()).catch(() => ({})); const projects = Array.isArray(got) ? got : got.projects || [];
+  if (!project && projects.length) project = projects[0].path;
+  titles(); window.escadrilleSidebar.render($('sidebar'), { project });
+};
+$('lede').textContent = T('learn.loading');
+escadrilleI18n.onChange(() => { titles(); if (data) view(); if (costed) renderFormulas(); });
+// Live: the shared stream of public/events.js; a change (a session finished, a distillation) refreshes what was learned
+let liveT = null; const live = () => { if (!project || typeof EventSource === 'undefined') return; const es = new EventSource('/api/events?' + q()); es.addEventListener('change', () => { clearTimeout(liveT); liveT = setTimeout(() => { if (data && !editing) load(); }, 600); }); };
+// ?task= pre-fills the field and costs it at once (a link from elsewhere, a capture): the field stays the developer's
+const preset = new URLSearchParams(location.search).get('task'); if (preset) $('task').value = preset;
+shell().then(() => { if (!project) { $('lede').textContent = T('learn.pickFolder'); return; } localStorage.setItem('escadrille.project', project); load().then(() => { if (preset) cost(); }); live(); });
+</script>
+</body>
+</html>

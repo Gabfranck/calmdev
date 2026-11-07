@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<script src="/md.js"></script>
+<script src="/todo.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="plan.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* A plan, four views: the flow (the plan as a schema of sessions by wave, with what each one will cost,
+   the total and the one button), the sessions (the cards, the health strip, the journal excerpt), the
+   journal, the prompts.
+   Flow grid at 1440: canvas 1440 - 228 - 8 - 48 = 1156; three waves: 3 x 364 + 2 x 32 = 1156.
+   Cards grid: 3 x (1156 - 32) / 3 + 2 x 16 = 1156. */
+/* ---- À faire: what every session waits for, permissions first; one calm line when nothing does ---- */
+.todo { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 4px var(--card-pad) 8px; margin-bottom: 24px; }
+.todo > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 0 4px; }
+.todo h2 { font-size: var(--fs-section); font-weight: 600; white-space: nowrap; }
+@media (max-width: 860px) { .todo > header { flex-wrap: wrap; } }
+.todo.calm { padding: 10px var(--card-pad); } .todo.calm > header { padding: 0; align-items: center; } .todo.calm h2 { font-size: var(--fs-body); font-weight: 500; color: var(--muted); }
+.todo .item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 16px; align-items: start; padding: 14px 0; }
+.todo .item + .item { border-top: 1px solid var(--rule); }
+.todo .badge { width: 32px; height: 32px; border-radius: 8px; background: var(--pill-wait-bg); color: var(--pill-wait-ink); display: grid; place-items: center; font-weight: 600; }
+.todo .what { font-weight: 600; line-height: 20px; padding-top: 6px; }
+.todo .what .m { color: var(--muted); font-weight: 400; }
+.todo .cmd { display: block; margin-top: 6px; padding: 6px 10px; background: var(--raised); border-radius: var(--radius-control); overflow-x: auto; white-space: pre; }
+.todo .look { margin-top: 2px; line-height: 20px; }
+.todo .act { display: flex; gap: 8px; align-items: center; padding-top: 0; }
+.ask-why { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); line-height: 20px; }
+.ask-why .pill { align-self: center; }
+/* the local rule's proposal (docs/policy.md): one grey line, the pre-selected button is the primary one; the key that answers shows on hover or focus */
+.ask-sug { margin-top: 6px; color: var(--muted); line-height: 20px; }
+.ask-sug .k { margin-left: 8px; opacity: 0; transition: opacity var(--t-hover) ease; } [data-pid]:hover .ask-sug .k, [data-pid]:focus-within .ask-sug .k { opacity: 1; }
+@media (hover: none) { .ask-sug .k { display: none; } }
+.btn[aria-pressed="true"] { background: var(--active); }
+.answer.deny { max-width: 560px; }
+.todo .answer { display: flex; gap: 8px; margin-top: 8px; max-width: 760px; }
+.todo .answer .control { flex: 1; }
+.stamp:empty { display: none; }
+/* phase 4: an alert and an info are one calm line with Vu; a waiting session shows its summary in two lines */
+.todo .item.calm { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 8px 0; align-items: start; }
+.todo .item.calm .what { min-height: 32px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 6px; padding-top: 6px; }
+.todo .item.calm .what { font-weight: 500; }
+.todo .item.calm .badge { width: 28px; height: 28px; margin: 2px; font-size: 13px; }
+.todo .badge.warn { background: var(--pill-warning-bg); color: var(--pill-warning-ink); }
+.todo .badge.info { background: var(--raised); color: var(--muted); }
+.todo .seen { color: var(--muted); }
+.queued { color: var(--muted); font-size: var(--fs-small); font-weight: 400; margin-left: 6px; white-space: nowrap; }
+.raise { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); }
+.raise input { width: 72px; height: 28px; padding: 0 6px; border: 1px solid var(--line, currentColor); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
+.todo .seen:hover { color: var(--text); }
+.todo .fold { color: var(--muted); font-weight: 500; margin-left: 4px; }
+.todo .fold:hover { color: var(--text); }
+.handoff { margin: 8px 0 4px; padding: 10px 12px; background: var(--raised); border-radius: var(--radius-control); max-width: 760px; }
+.handoff p:first-child { white-space: pre-wrap; line-height: 20px; }
+.handoff .stamp { margin-top: 6px; }
+.todo .summary { margin-top: 6px; max-width: 760px; color: var(--muted); line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.todo .summary.full { display: block; color: var(--text); }
+.todo .summary:hover { color: var(--text); }
+.todo .open { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.todo .open a.btn { color: var(--accent); }
+.spend { display: flex; gap: 6px; flex-wrap: wrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.spend b { color: var(--text); font-weight: 500; font-family: var(--mono); font-size: .93em; } .spend b.hot, .sline .row b.hot { color: var(--pill-wait-ink); }
+/* the plan's network, folded into one line under the launch */
+.net { margin-top: 14px; }
+.net > summary { font-size: var(--fs-body); }
+.net[open] > summary { color: var(--text); }
+.net-body { display: grid; gap: 10px; margin-top: 10px; max-width: 560px; }
+.net-list { display: grid; gap: 0; margin: 0; }
+.net-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 36px; }
+.net-list li + li { border-top: 1px solid var(--rule); }
+.net-list .btn { color: var(--muted); height: 28px; }
+.net-list .btn:hover { color: var(--negative); }
+.net-add { display: flex; gap: 8px; }
+.net-add .control { flex: 1; }
+.net .hint { color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.net .hint .bad { color: var(--negative); }
+.todo .stamp .card-link, .todo.calm .card-link { color: var(--muted); font-size: var(--fs-small); margin-left: 12px; }
+
+/* ---- the tabs: the flow, then one per launched session ---- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; scrollbar-width: none; }
+/* the four views of the plan (they left the sidebar): Flot · Sessions · Journal · Prompts, 36px, underlined in ink, hash kept */
+.views { margin-bottom: 20px; }
+.views .tab { height: 36px; padding: 0 10px; }
+.views .tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+.views .tab .count { font-size: var(--fs-small); color: var(--pill-wait-ink); background: var(--pill-wait-bg); padding: 1px 7px; border-radius: 999px; }
+/* in the title, on the right: the other plans of the project and the JSON */
+.plan-tools { display: flex; align-items: center; gap: 12px; flex: none; }
+.plan-tools select { width: auto; max-width: 260px; }
+.plan-tools .card-link { color: var(--muted); font-weight: 400; }
+@media (max-width: 860px) { .plan-tools { width: 100%; } .plan-tools select { max-width: none; flex: 1; } }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 40px; max-width: 280px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--muted); cursor: pointer; white-space: nowrap; transition: color var(--t-hover) ease; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+.tab .id { font-weight: 600; color: var(--text); }
+.tab .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tab.todo-jump { display: none; color: var(--pill-wait-ink); font-weight: 600; }
+.tab .ping { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--pill-wait-bg); color: var(--pill-wait-ink); font-size: var(--fs-small); font-weight: 600; display: grid; place-items: center; }
+.sdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--control); display: inline-block; }
+.sdot.running { background: var(--accent); } .sdot.waiting { background: var(--pill-wait-ink); } .sdot.done { background: var(--positive); } .sdot.error { background: var(--negative); }
+
+/* ---- a session: its line (folded), its thread, its composer ---- */
+.chatpane { display: flex; flex-direction: column; max-width: 860px; }
+.sline { display: grid; gap: 6px; padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--rule); }
+.sline .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sline h2 { font-size: var(--fs-section); font-weight: 600; }
+.sline .row { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sline .row b { color: var(--text); font-weight: 500; }
+.sline .acts { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
+.sline .acts .card-link { color: var(--muted); } .sline .acts .card-link:hover { color: var(--text); }
+.sline .note { color: var(--pill-negative-ink); font-size: var(--fs-small); }
+.automerge { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; color: var(--muted); cursor: pointer; }
+.automerge input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+
+/* ---- the flow: columns are waves, nodes are sessions, the edges are drawn after the render ---- */
+
+/* ---- the flow: the canvas of public/canvas.js (direction.md §5), one column per wave, the edges orthogonal; the
+   board keeps the height of the window minus the head (560 px at least), it moves and zooms, never compressed ---- */
+.board { height: clamp(560px, 100svh - 300px, 960px); margin-bottom: 24px; }
+.board:focus-visible { outline: none; }
+.title-row .sub { font-variant-numeric: tabular-nums; }
+.title-row .sub .t-neg { font-weight: 500; }
+@media (max-width: 860px) { .board { height: 420px; } }
+
+/* the detail of the chosen node, under the flow */
+.detail { margin-top: 24px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--card-pad); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; }
+.detail > header { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.detail h2 { font-size: var(--fs-section); font-weight: 600; }
+.detail header .meta { color: var(--muted); }
+.detail header .close { margin-left: auto; }
+.detail .kv { display: flex; justify-content: space-between; gap: 16px; min-height: 30px; align-items: baseline; }
+.detail .kv + .kv { border-top: 1px solid var(--rule); }
+.detail .k { color: var(--muted); flex: none; } .detail .v { text-align: right; font-variant-numeric: tabular-nums; min-width: 0; }
+.detail .v.dim { color: var(--faint); }
+.detail .stops { grid-column: 1 / -1; }
+.detail .foot { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+
+/* the total and the one button */
+.total { margin-top: 32px; display: grid; gap: 4px; }
+/* one 14 px line, no large figure (phase 11, DP: the home sets the tone, few big numbers) */
+.total .line { display: flex; align-items: baseline; gap: 8px 18px; flex-wrap: wrap; font-variant-numeric: tabular-nums; font-size: var(--fs-body); line-height: 20px; }
+.total .line b { font-weight: 600; }
+.total .line .m { color: var(--muted); }
+@media (max-width: 860px) { .total .line b { font-size: inherit; } }
+.total .why { color: var(--muted); }
+/* la mesure (session F): three calm lines beside the total, the figure in the one tint; the story line under the export */
+.measure { margin-top: 12px; display: grid; gap: 2px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; font-variant-numeric: tabular-nums; }
+.review-line p { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
+/* keyNote: a refused gesture says why and what to do, in place of a mute click (docs/gate.md) */
+.keynote { display: grid; gap: 4px; margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--pill-negative-bg); color: var(--pill-negative-ink); font-size: var(--fs-small); line-height: 20px; }
+.keynote p { margin: 0; display: block; }
+.keynote .keynote-why { font-weight: 600; }
+.keynote .keynote-srv { color: var(--muted); }
+.keynote code { font-family: var(--mono, ui-monospace, monospace); background: var(--surface); color: var(--text); padding: 1px 6px; border-radius: 4px; user-select: all; overflow-wrap: anywhere; }
+.keynote .card-link { margin-left: 6px; }
+.review-line .patch { max-height: 360px; overflow: auto; font-size: 12px; line-height: 17px; background: var(--active); padding: 8px; border-radius: 6px; white-space: pre; }
+.measure-line b { color: var(--text); font-weight: 600; }
+.measure-line summary { cursor: pointer; list-style: none; width: fit-content; }
+.measure-line summary::-webkit-details-marker { display: none; }
+.measure-line p { margin: 2px 0 6px; color: var(--muted); }
+.story-line { margin: -8px 0 16px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+.story-line .m { color: var(--faint); }
+.story-line .path { color: var(--text); word-break: break-all; }
+.fml { margin-top: 32px; display: grid; gap: 8px; }
+.fml-rows { display: grid; gap: 4px; }
+.fml-row { display: grid; grid-template-columns: 20px minmax(104px, 0.8fr) minmax(0, 2fr) 72px 92px; align-items: baseline; gap: 2px 16px; width: 100%; padding: 10px 14px; border: 0; border-radius: var(--radius-control); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
+.fml-row:hover { background: var(--raised); }
+.fml-row[aria-checked="true"] { background: var(--accent-tint); cursor: default; }
+.fml-row:disabled { cursor: progress; }
+.fml-dot { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--faint); align-self: center; }
+.fml-row[aria-checked="true"] .fml-dot { box-shadow: inset 0 0 0 4px var(--accent); }
+.fml-name { font-weight: 600; }
+.fml-models, .fml-gain { color: var(--muted); }
+.fml-cap, .fml-pct { text-align: right; }
+.fml-cap b { font-weight: 600; }
+.fml-pct .m { color: var(--muted); }
+.fml-gain { grid-column: 2 / -1; font-size: var(--fs-small); }
+.fml-note { color: var(--muted); font-size: var(--fs-small); }
+.fml-note.bad { color: var(--negative); }
+.fres { margin-top: 24px; }
+.fres > summary { font-size: var(--fs-body); }
+.fres[open] > summary { color: var(--text); }
+.fres-body { display: grid; gap: 8px; margin-top: 10px; max-width: 560px; }
+.fres-body .hint { color: var(--muted); font-size: var(--fs-small); line-height: 18px; margin: 0; }
+.fres-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.fres-list li { display: flex; gap: 12px; align-items: baseline; min-height: 36px; padding: 8px 0; }
+.fres-list li + li { border-top: 1px solid var(--rule); }
+.fres-list b { font-weight: 600; min-width: 2ch; }
+.fres-list .why { color: var(--muted); }
+@media (max-width: 860px) { .fml-row { grid-template-columns: 20px 1fr auto; } .fml-models, .fml-gain { grid-column: 2 / -1; } .fml-pct { grid-column: 3; } .fml-cap { grid-column: 3; grid-row: 1; } .fml-pct { grid-row: 2; } .fml-models { grid-row: 2; grid-column: 2; } }
+.launch { margin-top: 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.launch .btn.big { height: 48px; padding: 0 28px; font-size: 16px; border-radius: 8px; }
+.launch .tally { color: var(--muted); font-variant-numeric: tabular-nums; }
+.launch .tally.bad { color: var(--negative); }
+.journal { margin-top: 32px; }
+
+/* ---- the health strip ---- */
+.kpis { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--border); border-radius: var(--radius-card); margin-bottom: 24px; }
+.kpi { padding: 14px var(--card-pad); }
+.kpi + .kpi { border-left: 1px solid var(--border); }
+.kpi-label { color: var(--muted); }
+.kpi-value { margin-top: 4px; font-size: var(--fs-kpi); line-height: 1.15; font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.kpi-value small { font-size: 0.5em; color: var(--muted); font-weight: 500; margin-left: 4px; }
+.kpi-value.wait { color: var(--pill-wait-ink); }
+.kpi-value.bad { color: var(--negative); }
+
+/* ---- waves of cards ---- */
+.wave { margin-bottom: 28px; min-width: 0; }
+.later { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--gap); }
+@media (min-width: 1100px) { .later { grid-template-columns: 2fr 1fr; } }
+.wave > header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.wave h2 { font-size: var(--fs-section); font-weight: 600; }
+.wave header .meta { color: var(--muted); }
+.wave .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
+.wave .row3.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wave .row3.one { grid-template-columns: minmax(0, 1fr); }
+.card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--card-pad); min-width: 0; display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 16px; }
+.card.later { color: var(--muted); }
+.card.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.card .head { display: flex; align-items: flex-start; gap: 12px; }
+.card .badge { flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; font-weight: 600; color: var(--text); }
+.card.running .badge { background: var(--accent); color: var(--accent-ink); }
+.card.waiting .badge { background: var(--pill-wait-bg); color: var(--pill-wait-ink); }
+.card.done .badge { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+.card h3 { font-size: var(--fs-section); font-weight: 600; line-height: 22px; }
+.card .where { color: var(--muted); font-size: var(--fs-small); line-height: 16px; margin-top: 2px; }
+.claude { padding: 10px 12px; border-radius: 8px; background: var(--raised); line-height: 20px; }
+.claude b { font-weight: 600; }
+.claude time { color: var(--faint); font-size: var(--fs-small); margin-left: 6px; }
+.why { padding: 8px 12px; border-radius: 8px; background: var(--pill-warning-bg); color: var(--pill-warning-ink); line-height: 20px; }
+.why.neg { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+/* the stops: the product's own plan strip, one segment per stop */
+.stops { display: grid; gap: 6px; }
+.stops .track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; height: 6px; }
+.stops .track i { border-radius: 3px; background: var(--active); }
+.stops .track i.done { background: var(--accent); }
+.stops .track i.next { background: var(--pill-wait-ink); }
+.stops .line { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-small); color: var(--muted); }
+.stops .line b { color: var(--text); font-weight: 600; }
+.stops details { margin: 0; }
+.stops ol { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: var(--fs-small); line-height: 19px; }
+.stops ol li.done { text-decoration: line-through; }
+.stops ol li.next { color: var(--text); font-weight: 600; }
+.pr { display: grid; justify-items: start; gap: 6px; }
+.pr .pr-out, .pr .pr-err { color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.pr .pr-err { color: var(--pill-negative-ink); cursor: help; }
+.pr .pr-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; color: var(--muted); }
+.pr .pr-line a { color: var(--text); font-weight: 500; }
+.pr .pr-line .t-warn { cursor: help; }
+.pr .pr-refresh { margin-left: 8px; color: var(--muted); font-size: var(--fs-small); } .pr .pr-refresh:hover { color: var(--text); }
+.sline .pr { margin-top: 6px; }
+.card .actions { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.card .actions .copied { color: var(--muted); font-size: var(--fs-small); font-weight: 500; }
+.manual { display: grid; gap: 8px; margin-top: 8px; }
+.manual code { display: block; font: 13px/18px var(--mono); background: var(--raised); padding: 8px 10px; border-radius: 6px; overflow-x: auto; white-space: nowrap; }
+.manual pre { margin: 0; padding: 10px 12px; background: var(--raised); border-radius: 8px; white-space: pre-wrap; word-break: break-word; font: 13px/19px var(--mono); max-height: 260px; overflow: auto; }
+textarea.note { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); resize: vertical; line-height: 20px; }
+textarea.note:focus { outline: 0; border-color: var(--accent); }
+textarea.note::placeholder { color: var(--faint); }
+
+/* ---- journal ---- */
+table { width: 100%; border-collapse: collapse; }
+th { height: 36px; padding: 0 12px 0 0; text-align: left; font-weight: 500; font-size: var(--fs-small); color: var(--muted); white-space: nowrap; }
+td { padding: 10px 12px 10px 0; border-top: 1px solid var(--rule); vertical-align: baseline; line-height: 20px; }
+td.t { width: 56px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.s { width: 64px; font-weight: 600; white-space: nowrap; }
+td.st { width: 170px; white-space: nowrap; }
+td .m { color: var(--muted); }
+/* the journal's health dot, scoped to its cell: a bare `.dot` rule lit every dot of the sidebar (Mémoire, Accès…) */
+td.st .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--control); margin-right: 6px; vertical-align: middle; }
+td.st .dot.ok { background: var(--accent); } td.st .dot.drift { background: var(--warning); } td.st .dot.error { background: var(--negative); }
+
+@media (max-width: 1100px) { .wave .row3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 860px) {
+  /* the flow stacks: one row per wave, the edges give way to a line under the node */
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .flow svg.edges { display: none; }
+  .node .after { display: block; }
+  .detail { grid-template-columns: minmax(0, 1fr); }
+  .launch .btn.big { width: 100%; }
+  .wave .row3, .wave .row3.two { grid-template-columns: minmax(0, 1fr); }
+  .todo .item { grid-template-columns: 32px minmax(0, 1fr); }
+  .todo .act { grid-column: 1 / -1; flex-wrap: wrap; }
+  .todo .act .btn { flex: 1; height: 40px; }
+  .todo .item.calm .act { grid-column: auto; } .todo .item.calm .act .btn { flex: none; }
+  .todo .answer .btn { height: 40px; }
+  .sline .acts { margin-left: 0; }
+  .tabs { position: sticky; top: 0; z-index: 5; background: var(--surface); margin: 0 -16px 20px; padding: 0 16px; }
+  .tab { height: 44px; max-width: 200px; }
+  .tab .nm { display: none; } /* the name is in the session's line under the tabs */
+  .tab.todo-jump { display: inline-flex; }
+  .todo { padding: 4px 16px; }
+  .todo .what .sn, .sline .row .sep { display: none; }
+  .sline .row { gap: 4px 12px; }
+  .composer { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .kpis { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi + .kpi { border-left: 0; } .kpi:nth-child(2n) { border-left: 1px solid var(--border); } .kpi:nth-child(n + 3) { border-top: 1px solid var(--border); }
+  td.st { width: auto; white-space: normal; } th { white-space: normal; } td.t { width: 44px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span><span class="stamp" id="stamp"></span><span class="rt-slot" id="retire"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas"></div></main>
+  </div>
+</div>
+<script src="/speech.js"></script>
+<script src="/suggest.js"></script>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/measure.js"></script>
+<script src="/canvas.js"></script>
+<script src="/retire.js"></script>
+<script>
+const P = window.escadrilleProjects;
+const keyed = (prefix, ids) => new Proxy({}, { get: (o, k) => (ids.includes(k) ? T(prefix + k) : undefined) });
+const STATUSES = keyed('plan.st.', ['later', 'todo', 'running', 'waiting', 'paused', 'done']);
+const HEALTH = keyed('plan.h.', ['ok', 'drift', 'error']);
+let MODEL_NAMES = {}; // filled from GET /api/models before the first render
+const loadModelNames = () => api('/api/models').then((r) => { MODEL_NAMES = Object.fromEntries((r.models || []).map((m) => [m.id, m.name])); }).catch(() => {});
+const VIEWS = ['flow', 'sessions', 'journal', 'plan'];
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : T.time(d); };
+// A 403 (the gate of docs/gate.md, or a touched guardrail without the key) is remembered by its text: keyNote renders it
+const refused = new Set();
+let api = (p, body) => fetch(p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined).then(async (r) => { const j = await r.json(); if (r.status === 403 && j && j.error) refused.add(j.error); return j; });
+const copy = async (text) => { try { await navigator.clipboard.writeText(text); return true; } catch (e) { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.focus(); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (err) {} ta.remove(); return ok; } };
+// Figures in French: "1,2 M", "840 k", "12 %", "36,60 $US"; a narrow no-break space before the unit
+const NB = ' ';
+const fmtTokens = (n) => { if (!Number.isFinite(n)) return '–'; if (n >= 1e6) return T.num(n / 1e6, { maximumFractionDigits: 1 }) + NB + 'M'; if (n >= 1e3) return T.num(Math.round(n / 1e3)) + NB + 'k'; return T.num(Math.round(n)); };
+const fmtPct = (x) => Number.isFinite(x) ? T.num(x * 100, { maximumFractionDigits: x < 0.01 ? 2 : x < 0.1 ? 1 : 0 }) + NB + '%' : '–';
+const fmtCost = (c) => Number.isFinite(c) ? T.usd(c, c < 10 ? 2 : 0) : '–';
+// A ceiling reads short: "5 $", "2,50 $"
+const fmtBudget = (c) => Number.isFinite(c) ? T.usd(c, Number.isInteger(c) ? 0 : 2) : '–';
+const ratio = (x) => Number.isFinite(x) ? (x > 1 ? x / 100 : x) : NaN; // an alert's pct, 0..1 or 0..100
+const andList = (a) => a.length < 2 ? a.join('') : T('canvas.and', { a: a.slice(0, -1).join(', '), b: a[a.length - 1] });
+const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : T.date(d, { weekday: 'long', day: 'numeric', month: 'short' }) + ' ' + T.time(d); };
+
+let planId = location.pathname.startsWith('/plan/') ? decodeURIComponent(location.pathname.slice(6)) : null;
+const params = new URLSearchParams(location.search);
+let view = (location.hash || '#flow').slice(1); if (view === 'overview') view = 'flow'; if (!VIEWS.includes(view)) view = 'flow';
+let data = null; let claude = null; let chosen = params.get('node') || null; // the node the developer clicked (?node=B opens it)
+let launching = null; // true while the big button waits for the server
+const canvas = document.getElementById('canvas');
+const byId = () => Object.fromEntries(data.state.map((s) => [s.id, s]));
+const stateFor = (s) => byId()[s.id] || { status: s.wave > 1 ? 'later' : 'todo', stops: [], health: 'ok', why: '', claude: '', note: '' };
+const nextStop = (s, x) => (s.stops || []).findIndex((_, i) => !x.stops.includes(i));
+const estOf = (s) => (data.estimate && data.estimate.sessions && data.estimate.sessions[s.id]) || null;
+
+// All the sessions on the screen: the planned ones, then the ones the windows created (A2-<asset>)
+const allSessions = () => { const planned = data.plan.sessions; const extra = data.state.filter((x) => !planned.some((s) => s.id === x.id) && x.id !== 'pilot').map((x) => ({ id: x.id, name: x.name || x.id, wave: 99, stops: [] })); return [...planned, ...extra]; };
+// The figures of the strip, computed from the rows (never typed)
+const figures = () => { const rows = allSessions().map((s) => ({ s, x: stateFor(s) })); const n = (f) => rows.filter(f).length; return { rows, todo: n((r) => r.x.status === 'todo'), running: n((r) => r.x.status === 'running'), waiting: n((r) => r.x.status === 'waiting'), done: n((r) => r.x.status === 'done'), later: n((r) => r.x.status === 'later'), errors: n((r) => r.x.health === 'error'), drifts: n((r) => r.x.health === 'drift') }; };
+const wavesOf = () => { const all = allSessions(); const waves = [...(data.plan.waves || [{ n: 1, title: T('plan.sessionsWave') }])]; if (all.some((s) => s.wave === 99)) waves.push({ n: 99, title: T('plan.otherSessions'), text: T('plan.outside') }); return waves.map((w) => ({ ...w, items: all.filter((s) => (s.wave || 1) === w.n) })).filter((w) => w.items.length); };
+// The edges: one per `after`; a session of wave n > 1 without `after` waits for the whole wave n - 1 (dashed)
+const edgesOf = () => { const waves = wavesOf(); const out = []; for (const s of data.plan.sessions) { if (s.after && s.after.length) { for (const a of s.after) out.push({ from: a, to: s.id, wave: false }); } else if ((s.wave || 1) > 1) { const i = waves.findIndex((w) => w.n === s.wave); const prev = waves[i - 1]; if (prev) for (const p of prev.items) out.push({ from: p.id, to: s.id, wave: true }); } } return out; };
+const afterText = (s) => { if (s.after && s.after.length) return T('plan.after', { list: s.after.join(', ') }); if ((s.wave || 1) > 1) { const waves = wavesOf(); const prev = waves[waves.findIndex((w) => w.n === s.wave) - 1]; return prev ? T('plan.after', { list: prev.items.map((p) => p.id).join(', ') }) : ''; } return ''; };
+
+const statusPill = (x) => `<span class="pill ${x.status === 'waiting' ? 'wait' : x.status === 'done' ? 'pos' : ''}">${STATUSES[x.status] || esc(x.status)}</span>`;
+const healthPill = (x) => x.health && x.health !== 'ok' ? `<span class="pill ${x.health === 'error' ? 'neg' : 'warn'}"><i aria-hidden="true"></i>${HEALTH[x.health]}</span>` : '';
+const stopsBlock = (s, x) => { if (!(s.stops || []).length) return ''; const nx = nextStop(s, x); const done = x.stops.length; const active = !['todo', 'later'].includes(x.status);
+  return `<div class="stops"><div class="track" aria-hidden="true">${s.stops.map((_, i) => `<i class="${x.stops.includes(i) ? 'done' : (i === nx && active ? 'next' : '')}"></i>`).join('')}</div>
+  <div class="line"><span>${esc(T('plan.stopsDone', { a: done, n: s.stops.length }))}</span><span>${nx >= 0 ? `${esc(T(active ? 'plan.next' : 'plan.first'))} <b>${esc(s.stops[nx])}</b>` : esc(T('plan.allPassed'))}</span></div>
+  <details><summary>${esc(T('plan.stopsH'))}</summary><ol>${s.stops.map((t, i) => `<li class="${x.stops.includes(i) ? 'done' : (i === nx && active ? 'next' : '')}">${esc(t)}</li>`).join('')}</ol></details></div>`; };
+
+// ---- the sessions in the page: « À faire », the tabs, one chat per launched session
+// Markdown for a session's prose, the rules of index.html; its escadrille:* blocks fold into one line
+const md = window.escadrilleMd; // public/md.js, the rules of the Conversation
+const prose = (t) => { const parts = String(t || '').split(/```(escadrille:[\w-]+)[^\n]*\n([\s\S]*?)```/); let out = '';
+  for (let i = 0; i < parts.length; i += 3) { if (parts[i].trim()) out += md(parts[i]); if (parts[i + 1]) out += `<details class="block"><summary>Bloc ${esc(parts[i + 1])}</summary><pre><code>${esc(parts[i + 2].trim())}</code></pre></details>`; }
+  return out; };
+
+const TOOL_VERB = new Proxy({}, { get: (o, k) => { const v = { Bash: 'Bash', Edit: 'Edit', MultiEdit: 'Edit', Write: 'Write', NotebookEdit: 'Edit', Read: 'Read', WebFetch: 'WebFetch', WebSearch: 'WebSearch' }[k]; return v ? T('plan.v.' + v) : undefined; } });
+let tab = params.get('tab') || 'flow'; // 'flow' or the id of a session
+const msgs = {}; // session id -> its messages, fetched the first time its tab shows, then grown by the events
+const drafts = {}; // data-draft key -> what the developer typed and has not sent, kept across renders
+const notes = {}; // a key -> one line said under a control (a failure, a conflict)
+// One rendering for every note: a refused gesture (403) says why (the browser has no guard key) and the gesture (open the
+// link of guard-link once, its path copyable, then click again); any other text keeps its line
+const GUARD_LINK = '~/.config/escadrille/guard-link'; let copiedPath = '';
+const keyNote = (text) => { const m = /(\S*guard-link)/.exec(text); const file = m ? m[1] : GUARD_LINK;
+  return `<div class="keynote" role="alert"><p class="keynote-why">${esc(T('plan.key.why'))}</p><p>${esc(T('plan.key.do'))} <code>${esc(file)}</code><button type="button" class="card-link" data-copy-path="${esc(file)}">${esc(T(copiedPath === file ? 'plan.key.copied' : 'plan.key.copy'))}</button></p><p>${esc(T('plan.key.then'))}</p><p class="keynote-srv">${esc(text)}</p></div>`; };
+const noteOf = (text, wrap) => (!text ? '' : refused.has(text) ? keyNote(text) : wrap(esc(text)));
+let launchError = '';
+const plural = (n) => T('main.sessionsN', { n });
+const launched = (x) => !!x.sessionId || ['running', 'waiting', 'done'].includes(x.status);
+const sessionOf = (id) => allSessions().find((s) => s.id === id);
+const inFlight = () => allSessions().filter((s) => ['running', 'waiting'].includes(stateFor(s).status)).length;
+const sessionApi = (sid, what, body) => api(`/api/plan/${encodeURIComponent(planId)}/session/${encodeURIComponent(sid)}/${what}`, body);
+// Every wait of every session, permissions first, the oldest first
+// A finished session whose branch waits for the developer's merge (Dev, 2026-11-02 08:35: « je ne vois pas où je fusionne »):
+// a line of « À faire » with the button, when the plan merges by hand (no autoMerge, not a kit, not closed)
+const byHand = () => !(data.plan.autoMerge || autoMergeOn() || data.plan.kit || data.plan.delivery === 'kit' || data.plan.status === 'closed' || data.plan.closed === true || data.plan.closedAt);
+const toMerge = (x) => x.status === 'done' && !!x.worktree && !x.worktree.merged && byHand();
+const pendings = () => { const out = []; for (const s of allSessions()) { const x = stateFor(s); for (const p of x.pending || []) out.push({ s, x, p }); if (toMerge(x)) out.push({ s, x, p: { kind: 'merge', id: 'merge:' + s.id, at: x.at } }); }
+  return out.sort((a, b) => (KIND_ORDER[a.p.kind] ?? 9) - (KIND_ORDER[b.p.kind] ?? 9) || String(a.p.at).localeCompare(String(b.p.at))); };
+// What waits for an answer (a permission, a reply) against what is only to be read (an alert, an info)
+const KIND_ORDER = { permission: 0, review: 1, 'ask-budget': 1, 'run-tests': 1, reply: 1, merge: 1, alert: 2, info: 3 };
+const asks = (w) => ['permission', 'reply', 'review', 'ask-budget', 'run-tests', 'merge'].includes(w.p.kind);
+const toAnswer = () => pendings().filter(asks);
+const askLine = (sid, tool) => esc(T('plan.wants', { s: sid, verb: TOOL_VERB[tool] || T('plan.v.use') }));
+// Why the session asks (its own words), and whether the command leaves localhost
+const reasonOf = (p) => p.reason || (p.input && p.input.description) || '';
+const netOf = (p) => { const t = String(p.text || '') + ' ' + String((p.input && (p.input.url || p.input.command)) || ''); if (p.tool === 'WebSearch') return 'recherche web';
+  const hosts = (t.match(/\b[a-z][\w+.-]*:\/\/[^\s'"`)]+/gi) || []).map((u) => { try { return new URL(u).hostname; } catch (e) { return ''; } }).filter((h) => h && !/^(localhost|127\.|0\.0\.0\.0$|\[::1\]$)/.test(h));
+  if (hosts.length) return [...new Set(hosts)].join(', ');
+  if (/\bgit\s+(fetch|pull|push|clone|ls-remote)\b/.test(t)) return T('plan.remote');
+  if (/\b(npm\s+(i|install|publish|view)|npx|pnpm\s+(add|install)|yarn\s+add|pip3?\s+install|brew\s+install|ssh|scp|rsync)\b/.test(t)) return T('plan.offLocal');
+  return ''; };
+const askWhy = (p) => { const r = reasonOf(p); const n = netOf(p); return (r || n ? `<p class="ask-why">${n ? `<span class="pill warn">${esc(T('plan.netPill', { n }))}</span>` : ''}${r ? `<span>${esc(r)}</span>` : ''}</p>` : '') + sugLine(p); };
+// The server proposes (p.suggest, lib/policy.mjs), the developer decides: the page pre-selects the button, never presses it
+const sugOf = (p) => (p && p.suggest && typeof p.suggest.allow === 'boolean' ? p.suggest : null);
+const sugLine = (p) => { const g = sugOf(p); return g ? `<p class="ask-sug" data-suggest="${g.allow ? 'allow' : 'deny'}">${esc(g.reason)}<span class="k" aria-hidden="true"><kbd>${g.allow ? 'a' : 'r'}</kbd> ${esc(T(g.allow ? 'plan.allowKey' : 'plan.denyKey'))}</span></p>` : ''; };
+const denying = new Set(); // sid:pid whose refusal field is open
+const answerBtns = (sid, pid, p) => { const no = sugOf(p)?.allow === false; return `<button type="button" class="btn${no ? '' : ' primary'}" data-answer="allow" aria-keyshortcuts="${no ? '' : 'a'}">${esc(T('plan.allow'))}</button><button type="button" class="btn" data-answer="always">${esc(T('plan.always'))}</button><button type="button" class="btn ${no ? 'primary' : 'ghost'}" data-answer="deny" aria-keyshortcuts="${no ? 'r' : ''}" aria-pressed="${denying.has(sid + ':' + pid)}">${esc(T('plan.deny'))}</button>`; };
+const denyForm = (sid, pid) => { if (!denying.has(sid + ':' + pid)) return ''; const k = `deny:${sid}:${pid}`; return `<form class="answer deny" data-deny><input class="control" data-draft="${esc(k)}" value="${esc(drafts[k] || '')}" placeholder="${esc(T('plan.denyPh'))}" aria-label="${esc(T('plan.denyAria'))}">${MIC}<button class="btn" type="submit">${esc(T('plan.deny'))}</button><button type="button" class="btn ghost" data-deny-cancel>${esc(T('plan.cancel'))}</button></form>`; };
+
+// Being told: a browser notification when a wait appears while the tab is not in front, a mark in the title
+const notifyKey = 'escadrille.notify'; // the same switch as the chat of index.html
+const notifyOn = () => 'Notification' in window && Notification.permission === 'granted' && localStorage.getItem(notifyKey) === '1';
+const notifyLink = () => 'Notification' in window && !notifyOn() ? `<button type="button" class="card-link" id="notify">${esc(T('plan.notifyMe'))}</button>` : '';
+let seenPending = null;
+// Only what the developer himself has to do is notified or marks the tab (public/todo.js): with a pilot present
+// (GET /api/status pilot.present), a reply, a permission or an ordinary review is the pilot's, in silence; a human stop
+// (taste, data, security, release) and a guard review always reach him
+let pilotPresent = false;
+const forDev = (w) => window.escadrilleTodo.needsDev({ kind: w.p.kind, pilot: pilotPresent, human: !!(w.p.kind === 'reply' && Number.isInteger(w.p.stop) && w.s.stops && w.s.stops[w.p.stop] && typeof w.s.stops[w.p.stop] === 'object' && ['taste', 'data', 'security', 'release'].includes(w.s.stops[w.p.stop].kind)), guard: !!(w.p.guard && w.p.guard.length) });
+const maybeNotify = (all) => { const list = all.filter(forDev); const ids = list.map((w) => w.s.id + ':' + w.p.id); const fresh = seenPending ? list.filter((w, i) => !seenPending.has(ids[i])) : [];
+  if (fresh.length && document.hidden && notifyOn()) { const w = fresh[0]; const n = new Notification(`${w.s.id} · ${w.s.name || ''}`, { body: w.p.kind === 'permission' ? T('plan.notifPerm', { s: w.s.id, verb: TOOL_VERB[w.p.tool] || T('plan.v.use'), text: w.p.text }) : w.p.kind === 'reply' ? T('plan.notifReply', { s: w.s.id }) : w.p.kind === 'alert' ? alertText(w.s, w.x, w.p) : String(w.p.text || ''), tag: ids[list.indexOf(w)] }); n.onclick = () => { window.focus(); n.close(); }; }
+  seenPending = new Set(ids); };
+
+const todoItem = ({ s, x, p }) => { const who = `<span class="badge" aria-hidden="true">${esc(s.id)}</span>`; const attrs = `data-sid="${esc(s.id)}" data-pid="${esc(p.id)}"`;
+  if (p.kind === 'permission') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${askLine(s.id, p.tool)} <span class="m">· ${esc(p.tool)}<span class="sn"> · ${esc(s.name)}</span></span></p><code class="cmd">${esc(p.text)}</code>${askWhy(p)}${denyForm(s.id, p.id)}</div><div class="act">${answerBtns(s.id, p.id, p)}</div></div>`;
+  // L (docs/autonomy.md): files under guard to review, a plan past its « ask above » threshold
+  if (p.kind === 'review') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${esc(p.text)} <span class="m">· ${esc(s.name)}</span></p></div><div class="act"><button type="button" class="btn" data-goto-review="${esc(s.id)}">${esc(T('plan.review'))}</button></div></div>`;
+  if (p.kind === 'merge') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${esc(T('plan.todoMerge', { s: s.id }))} <span class="m">· ${esc(s.name)}</span></p>${noteOf(notes['act:' + s.id], (h) => `<p class="why neg">${h}</p>`)}</div><div class="act"><button type="button" class="btn primary" data-act="merge">${esc(T('plan.merge'))}</button></div></div>`;
+  if (p.kind === 'run-tests') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${esc(p.text)}</p></div><div class="act"><button type="button" class="btn primary" data-run-tests="${esc(s.id)}">${esc(T('plan.runTests'))}</button></div></div>`;
+  if (p.kind === 'ask-budget') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${esc(p.text)}</p></div><div class="act"><button type="button" class="btn primary" data-continue-budget="${esc(s.id)}">${esc(T('plan.continue'))}</button></div></div>`;
+  if (p.kind === 'alert') return `<div class="item calm" ${attrs}>${who.replace('class="badge"', 'class="badge warn"')}<p class="what">${esc(alertText(s, x, p))} <span class="m">· ${esc(s.name)}</span></p><div class="act">${seenBtn}</div></div>`;
+  // Phase 13 PIL (docs/flot.md, « La boucle de QA »): the true defects of a QA run, the board on a click; the link is the server's path
+  if (p.kind === 'qa') return `<div class="item" ${attrs}>${who}<div style="min-width:0"><p class="what">${esc(p.text)} <span class="m">· ${esc(s.name)}${p.ids?.length ? ' · ' + esc(p.ids.join(', ')) : ''}</span></p>${p.defects ? `<p class="stamp">${esc(p.defects)}</p>` : ''}</div><div class="act"><a class="btn primary" href="${esc('file://' + p.board)}" target="_blank" rel="noopener">${esc(T('plan.seeBoard'))}</a>${seenBtn}</div></div>`;
+  if (p.kind === 'info') { const h = handoffOf(x, p);
+    return `<div class="item calm" ${attrs}>${who.replace('class="badge"', 'class="badge info"')}<div style="min-width:0"><p class="what">${esc(p.text)} <span class="m">· ${when(p.at)}</span>${h ? ` <button type="button" class="card-link fold" data-fold="${esc(s.id + ':' + p.id)}" aria-expanded="${unfolded.has(s.id + ':' + p.id)}">${esc(T(unfolded.has(s.id + ':' + p.id) ? 'plan.fold' : 'plan.handoff'))}</button>` : ''}</p>${h && unfolded.has(s.id + ':' + p.id) ? `<div class="handoff"><p>${esc(h.text)}</p><p class="stamp">${esc(h.file)}${h.at ? ' · ' + when(h.at) : ''}</p></div>` : ''}</div><div class="act">${seenBtn}</div></div>`; }
+  const stop = Number.isInteger(p.stop) && s.stops ? s.stops[p.stop] : null; const k = 'reply:' + s.id; const look = p.text || x.claude; const sum = p.summary || x.summary; const o = x.open;
+  const openRow = o ? `<div class="open">${o.folder ? `<button type="button" class="btn" data-open="open">${esc(T('plan.openProject'))}</button>` : ''}${o.url ? `<a class="btn" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(T('plan.openUrl', { u: o.url.replace(/^https?:\/\//, '') }))}</a>` : o.dev ? `<button type="button" class="btn" data-open="devserver">${esc(T('plan.startDev'))}</button>` : ''}${noteOf(notes['open:' + s.id], (h) => `<span class="stamp">${h}</span>`)}</div>` : '';
+  return `<div class="item" ${attrs}>${who}<div style="min-width:0;grid-column:2/-1"><p class="what">${esc(T('plan.waitsYou', { s: s.id }))} <span class="m">· ${stop ? esc(T('plan.stopPassed', { s: stop })) : esc(s.name)}</span>${p.fallbackAt ? ` <span class="m" title="${esc(p.fallback || '')}">· ${esc(T('plan.fallbackIn', { t: fallbackIn(p.fallbackAt) }))}</span>` : ''}</p>${look ? `<p class="look">${esc(look)}</p>` : ''}${sum ? `<p class="summary ${unfolded.has('sum:' + s.id) ? 'full' : ''}" data-fold="${esc('sum:' + s.id)}" role="button" tabindex="0" aria-expanded="${unfolded.has('sum:' + s.id)}" title="${unfolded.has('sum:' + s.id) ? '' : esc(T('plan.wholeSummary'))}">${esc(sum)}</p>` : ''}${openRow}<form class="answer" data-reply><input class="control" data-draft="${k}" value="${esc(drafts[k] || '')}" placeholder="${esc(T('plan.replyPh', { s: s.id }))}" aria-label="${esc(T('plan.replyAria', { s: s.id }))}">${MIC}<button class="btn primary" type="submit">${esc(T('plan.send'))}</button></form>${noteOf(notes[k], (h) => `<p class="stamp">${h}</p>`)}</div></div>`; };
+// An alert in one calm line, its figures from the session's own usage when it has them
+const alertText = (s, x, p) => { const u = x.usage || {}; const budget = x.budget ?? s.budget; const pct = ratio(p.pct);
+  if (p.what === 'budget') return Number.isFinite(u.cost) && Number.isFinite(budget) ? T('plan.spent', { s: s.id, a: fmtCost(u.cost), b: fmtBudget(budget) }) : T('plan.spentPct', { s: s.id, p: fmtPct(pct) });
+  if (p.what === 'context') return T('plan.context', { s: s.id, p: fmtPct(Number.isFinite(pct) ? pct : u.context) });
+  return p.text || T('plan.attention', { s: s.id }); };
+// The handoff an info line speaks of: its number in the line, else the last one
+const handoffOf = (x, p) => { const hs = x.handoffs || []; if (!hs.length) return null; const n = p.n ?? Number((String(p.text).match(/n°\s*(\d+)/) || [])[1]); return hs.find((h) => h.n === n) || hs[hs.length - 1]; };
+const seenBtn = { toString: () => `<button type="button" class="btn ghost seen" data-dismiss aria-label="${esc(T('plan.seenAria'))}">${esc(T('plan.seen'))}</button>` }; // read in the current language
+const unfolded = new Set(); // the handoffs and summaries the developer unfolded
+const todoBlock = (list) => { const n = inFlight();
+  const go = launchBtn(); const ready = toLaunch().length;
+  if (!list.length) return `<section class="todo calm" aria-labelledby="todo-h"><header><h2 id="todo-h">${esc(ready ? T('plan.readyN', { sessions: plural(ready) }) : n ? T('plan.nothingFlying', { sessions: plural(n) }) : T('plan.nothing'))}</h2>${go || notifyLink()}</header></section>`;
+  const a = list.filter(asks).length; const r = list.length - a; const count = esc([a && T('plan.pendingN', { n: a }), r && T('plan.toRead', { n: r }), n && T('plan.inFlight', { sessions: plural(n) })].filter(Boolean).join(', '));
+  return `<section class="todo" aria-labelledby="todo-h"><header><h2 id="todo-h">${esc(T('plan.todo'))}</h2><span class="stamp">${count}${notifyLink()}</span>${go}</header>${list.map(todoItem).join('')}</section>`; };
+
+const tabsBar = () => { const ss = allSessions().filter((s) => launched(stateFor(s))); if (!ss.length) return '';
+  const nWait = toAnswer().length;
+  return `<div class="tabs" role="tablist" aria-label="${esc(T('plan.tabsAria'))}">${nWait ? `<button type="button" class="tab todo-jump" data-todo-jump>${esc(T('plan.todoN', { n: nWait }))}</button>` : ''}<button type="button" class="tab" role="tab" data-tab="flow" aria-selected="${tab === 'flow'}" tabindex="${tab === 'flow' ? 0 : -1}">${esc(T('plan.theFlow'))}</button>${ss.map((s) => { const x = stateFor(s); const w = (x.pending || []).filter((p) => asks({ p })).length;
+    return `<button type="button" class="tab" role="tab" data-tab="${esc(s.id)}" aria-selected="${tab === s.id}" tabindex="${tab === s.id ? 0 : -1}" title="${esc(s.name)} · ${esc(STATUSES[x.status] || x.status)}"><i class="sdot ${x.health === 'error' ? 'error' : esc(x.status)}" aria-hidden="true"></i><span class="id">${esc(s.id)}</span><span class="nm">${esc(s.name)}</span>${w ? `<span class="ping" aria-label="${esc(T('plan.pendingN', { n: w }))}">${w}</span>` : ''}</button>`; }).join('')}</div>`; };
+
+// What a session spent against its ceiling and its share of the context window; amber from the alert
+// thresholds (80 % of the ceiling, 60 % of the context)
+const budgetOf = (s, x) => x.budget ?? s.budget;
+// Phase 7 (docs/sessions.md, « La robustesse »): a queued session says so, greyed, next to its name; a capped one
+// (no process, its cost at the cap) offers one line to raise its cap, which restarts it with the rest
+const queuedTag = (x) => (x.queued ? `<span class="queued">${esc(T('plan.queued'))}</span>` : '');
+const cappedOf = (s, x) => { const b = budgetOf(s, x); return !!x.usage && Number.isFinite(b) && x.usage.cost >= b && !x.mode && ['waiting', 'running'].includes(x.status); };
+const raiseLine = (s, x) => { if (!cappedOf(s, x)) return ''; const b = budgetOf(s, x); const k = 'raise:' + s.id;
+  return `<form class="raise" data-raise data-sid="${esc(s.id)}"><label for="raise-${esc(s.id)}">${esc(T('plan.capReached'))}</label><input id="raise-${esc(s.id)}" type="number" min="0.5" step="0.5" value="${Math.ceil(b * 2)}" inputmode="decimal"> $<button type="submit" class="btn">${esc(T('plan.raise'))}</button>${noteOf(notes[k], (h) => `<span class="note">${h}</span>`)}</form>`; };
+const spend = (s, x) => { const u = x.usage; if (!u) return null; const b = budgetOf(s, x); const hotC = Number.isFinite(b) && b > 0 && u.cost / b >= 0.8; const hotX = u.context >= 0.6;
+  return { cost: `<span><b class="${hotC ? 'hot' : ''}">${fmtCost(u.cost)}</b>${Number.isFinite(b) ? ` / ${fmtBudget(b)}` : ''}</span>`, ctx: Number.isFinite(u.context) ? `<span>${esc(T('plan.ctx'))} <b class="${hotX ? 'hot' : ''}">${fmtPct(u.context)}</b></span>` : '', hasBudget: Number.isFinite(b) }; };
+const handoffNote = (x) => (x.handoffs || []).length ? `<span>${esc(T('plan.handoffN', { n: x.handoffs[x.handoffs.length - 1].n }))}</span>` : '';
+// A session's line: what it costs and where it works on one line, the secondary actions at its end
+const sessionLine = (s, x) => { const u = x.usage; const wt = x.worktree; const sp = spend(s, x);
+  const facts = [esc(MODEL_NAMES[s.model] || s.model || '–'), sp ? sp.cost : '', sp ? sp.ctx : '', u ? `<span><b>${fmtTokens((u.input || 0) + (u.output || 0))}</b> ${esc(T('esc.tokens'))}</span>` : esc(T('plan.noUsage')), handoffNote(x), u && Number.isFinite(u.weekly) ? `<span>${esc(T('plan.weekly'))} <b>${fmtPct(u.weekly)}</b></span>` : '', wt ? `<span title="${esc(wt.path)}">${esc(wt.branch)}${wt.merged ? ' ' + esc(T('plan.merged')) : ''}</span>` : '', wt && wt.tests ? `<span class="${wt.tests.code === 0 ? '' : 't-neg'}" title="${esc(wt.tests.cmd)}">${esc(wt.tests.code === 0 ? T('plan.testsGreen') : T('plan.testsRed', { code: wt.tests.code }))}</span>` : ''].filter(Boolean);
+  const acts = [x.status === 'done' && wt && !wt.merged ? `<button type="button" class="card-link" data-act="merge">${esc(T('plan.merge'))}</button>` : '', `<button type="button" class="card-link" data-act="terminal">${esc(T('plan.terminal'))}</button>`, x.mode === 'terminal' ? `<button type="button" class="card-link" data-act="resume">${esc(T('plan.resume'))}</button>` : '', ['running', 'waiting'].includes(x.status) && x.mode !== 'terminal' ? `<button type="button" class="card-link" data-act="stop">${esc(T('plan.stop'))}</button>` : ''].filter(Boolean);
+  return `<header class="sline" data-sid="${esc(s.id)}"><div class="top"><h2>${esc(s.id)} · ${esc(s.name)}${queuedTag(x)}</h2>${statusPill(x)}${healthPill(x)}${x.mode === 'terminal' ? `<span class="pill">${esc(T('plan.atTerminal'))}</span>` : ''}</div><div class="row">${facts.join('<span class="sep" aria-hidden="true">·</span>')}<span class="acts">${acts.join('')}</span></div>${prBlock(s, x, true)}${noteOf(notes['act:' + s.id], (h) => `<p class="note">${h}</p>`)}${raiseLine(s, x)}</header>`; };
+
+// ---- the pull request (phase 7, the connectors): the one place of the app that calls out, and it says so before.
+// A finished session whose summary says « PR prête » and has no PR yet offers « Ouvrir la PR » with what will go
+// out in one grey line; afterwards the line carries the link and the tickets moved. Never a raw error on the card.
+const PR_READY = /pr\s+pr[êe]te/i;
+const prBusy = new Set(); const prErr = {}; const prLive = {}; // sid -> true while the POST runs; sid -> error; sid -> the refreshed GET
+let linearSettings = null; // { key, state } of the plan's project, read once
+const loadLinear = async () => { if (linearSettings || !data || !data.plan.project) return; const r = await api('/api/project/settings?project=' + encodeURIComponent(data.plan.project)).catch(() => null); linearSettings = (r && r.linear) || { key: false, state: T('set.linearDefault') }; render(); };
+const prCandidate = (x) => x.status === 'done' && !x.pr && PR_READY.test(x.summary || '');
+const ticketsOf = (s) => (s.tickets || []).map((t) => (typeof t === 'string' ? t : t.identifier)).filter(Boolean);
+const prShort = (e) => { const t = String(e || ''); return /auth|login|credential/i.test(t) ? T('plan.ghNotLogged') : /not found|ENOENT|introuvable/i.test(t) && /\bgh\b/.test(t) ? T('plan.ghMissing') : /push|rejected|non-fast-forward/i.test(t) ? T('plan.pushRefused') : /linear/i.test(t) ? T('plan.linearRefused') : /network|ENOTFOUND|ECONN|timeout/i.test(t) ? T('plan.netNoAnswer') : T('plan.prFailed'); }; // i18n-ok: the regexes read the server's and gh's words
+const prOut = (s, x) => { const tk = ticketsOf(s); const st = (linearSettings && linearSettings.state) || T('set.linearDefault'); const keyed = !linearSettings || linearSettings.key;
+  return [T('plan.pushes', { b: (x.worktree && x.worktree.branch) || T('plan.theBranch') }), T('plan.opensPr', { b: data.plan.base || 'main' }), tk.length ? (keyed ? T('plan.movesTo', { list: andList(tk), st }) : T('plan.noMove', { list: andList(tk) })) : ''].filter(Boolean).join(', '); };
+const ticketLine = (t) => t.ok ? `${esc(t.identifier)} → ${esc(t.state)}` : `<span class="t-warn" title="${esc(t.error || '')}">${esc(T('plan.notMoved', { t: t.identifier }))}</span>`;
+const prBlock = (s, x, big) => { const sid = s.id; const live = prLive[sid];
+  if (x.pr) { const p = x.pr; const url = (live && live.url) || p.url; const st = T('plan.pr.' + (live ? (live.merged ? 'merged' : live.state === 'CLOSED' ? 'closed' : live.reviewDecision === 'APPROVED' ? 'approved' : live.reviewDecision === 'CHANGES_REQUESTED' ? 'changes' : 'open') : 'open'));
+    return `<div class="pr" data-pr-sid="${esc(sid)}"><p class="pr-line"><a href="${esc(url)}" target="_blank" rel="noopener">PR #${esc(p.number)}</a> ${esc(st)}${(p.tickets || []).length ? ' · ' + p.tickets.map(ticketLine).join(' · ') : ''}<button type="button" class="card-link pr-refresh" data-pr="refresh" title="${esc(T('plan.prRefreshTitle'))}" ${prBusy.has(sid) ? 'disabled' : ''}>${esc(T(prBusy.has(sid) ? 'plan.reading' : 'plan.refresh'))}</button></p>${prErr[sid] ? `<p class="pr-err" title="${esc(prErr[sid])}">${esc(prShort(prErr[sid]))}</p>` : ''}</div>`; }
+  if (!prCandidate(x)) return '';
+  const busy = prBusy.has(sid);
+  return `<div class="pr" data-pr-sid="${esc(sid)}"><button type="button" class="btn ${big ? 'primary' : ''}" data-pr="open" ${busy ? 'disabled' : ''}>${esc(T(busy ? 'plan.opening' : 'plan.openPr'))}</button><p class="pr-out">${esc(prOut(s, x))}</p>${prErr[sid] ? `<p class="pr-err" title="${esc(prErr[sid])}">${esc(prShort(prErr[sid]))}</p>` : ''}</div>`; };
+const prAct = async (sid, what) => { prBusy.add(sid); delete prErr[sid]; render(); const route = `/api/plan/${encodeURIComponent(planId)}/session/${encodeURIComponent(sid)}/pr`;
+  const r = await (what === 'open' ? api(route, {}) : api(route)).catch((err) => ({ error: err.message }));
+  prBusy.delete(sid); if (!r || r.error) prErr[sid] = (r && r.error) || T('plan.noAnswer'); else if (what === 'refresh') prLive[sid] = r;
+  await load(); };
+
+// The thread: the session's prose, its tool calls folded into one quiet line, Dev's messages, its asks
+const threadHtml = (s, x) => { const ms = msgs[s.id]; if (!ms) return `<p class="empty">${esc(T('plan.threadComing'))}</p>`; if (!ms.length) return `<p class="empty">${esc(T('plan.threadEmpty'))}</p>`;
+  const open = new Set((x.pending || []).map((p) => p.id)); const model = esc(MODEL_NAMES[s.model] || s.model || 'Claude'); let html = ''; let acts = [];
+  const flush = (live) => { if (!acts.length) return; const last = acts[acts.length - 1]; html += `<div class="activity"><div class="who"><i class="${live ? '' : 'off'}" aria-hidden="true"></i></div><div><span class="lines">${esc(last.text)}</span>${acts.length > 1 ? `<details><summary>${acts.length} actions</summary><ol>${acts.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ol></details>` : ''}</div></div>`; acts = []; };
+  for (const m of ms) { if (m.role === 'activity') { acts.push(m); continue; } flush(false);
+    if (m.role === 'dev') html += `<div class="msg user"><div class="who" aria-hidden="true">${esc(T('esc.you'))}</div><div class="body"><div class="meta">${esc(T('esc.you'))} · ${when(m.at)}</div><div class="text">${md(m.text)}</div></div></div>`;
+    else if (m.role === 'claude') html += `<div class="msg from"><div class="who" aria-hidden="true">${esc(s.id)}</div><div class="body"><div class="meta">${model} · ${when(m.at)}</div><div class="text">${prose(m.text)}</div></div></div>`;
+    else if (m.role === 'ask') { const d = m.data || {}; const live = open.has(d.id); html += `<div class="msg ask" data-sid="${esc(s.id)}" data-pid="${esc(d.id)}"><div class="who" aria-hidden="true">?</div><div class="body"><div class="meta">${askLine(s.id, d.tool)} · ${esc(d.tool || '')} · ${when(m.at)}</div><div class="text"><code>${esc(m.text)}</code></div>${askWhy({ ...d, text: m.text })}${live ? `<div class="act">${answerBtns(s.id, d.id)}</div>${denyForm(s.id, d.id)}` : ''}</div></div>`; }
+    else html += `<p class="sys">${esc(m.text)} · ${when(m.at)}</p>`; }
+  flush(x.status === 'running'); return html; };
+const composerHtml = (s, x) => { const k = 'msg:' + s.id; const term = x.mode === 'terminal'; const wt = x.worktree;
+  const ph = T(term ? 'plan.phTerm' : x.status === 'running' ? 'plan.phRunning' : 'plan.phIdle', { s: s.id });
+  return `<form class="composer" data-compose data-sid="${esc(s.id)}"><div class="box"><textarea id="text" data-draft="${k}" data-sg data-sg-project="${esc((data && data.plan && data.plan.project) || '')}" data-sg-plan="${esc(planId)}" data-sg-session="${esc(s.id)}" data-sg-stop="${esc(((x.pending || []).find((p) => p.kind === 'reply') || {}).id || '')}" rows="2" placeholder="${esc(ph)}"  aria-label="${esc(T('plan.msgAria', { s: s.id }))}" ${term ? 'disabled' : ''}>${esc(drafts[k] || '')}</textarea><div class="interim" id="interim" aria-live="polite"></div><div class="bar"><button type="button" class="btn mic" id="mic" aria-pressed="false" aria-label="${esc(T('main.dictate'))}" ${term ? 'disabled' : ''}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5"/></svg><span id="micLabel">${esc(T('main.dictate'))}</span></button><span class="state" id="state">${notes[k] ? esc(notes[k]) : esc(T('plan.talkingTo', { s: s.id, m: MODEL_NAMES[s.model] || s.model || 'Claude' }) + (wt ? T('plan.inBranch', { b: wt.branch }) : ''))}</span><button type="submit" class="btn primary" ${term ? 'disabled' : ''}>${esc(T('plan.send'))}</button></div></div></form>`; };
+const sessionTab = (id) => { const s = sessionOf(id); const x = stateFor(s); if (!msgs[id]) loadMsgs(id);
+  return `<section class="chatpane" aria-label="La session ${esc(id)}">${sessionLine(s, x)}<div class="thread" id="thread">${threadHtml(s, x)}</div>${composerHtml(s, x)}</section>`; };
+const loadMsgs = async (id) => { const r = await sessionApi(id, 'messages').catch(() => ({ messages: [] })); msgs[id] = r.messages || []; if (tab === id) refreshThread(true); };
+// Only the thread is redrawn when a message arrives; it follows the bottom when the reader was there
+const refreshThread = (toBottom) => { const el = document.getElementById('thread'); const s = sessionOf(tab); if (!el || !s) return;
+  const near = toBottom || window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160; el.innerHTML = threadHtml(s, stateFor(s)); if (near) window.scrollTo({ top: document.documentElement.scrollHeight }); };
+
+// ---- dictation: see speech.js
+const MIC = { toString: () => `<button type="button" class="btn mic" data-mic aria-pressed="false" aria-label="${esc(T('main.dictate'))}" title="${esc(T('main.dictate'))}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5"/></svg></button>` }; // read in the current language
+const setupDictation = () => { for (const form of canvas.querySelectorAll('[data-reply], [data-deny]')) { const b = form.querySelector('[data-mic]'); const input = form.querySelector('input'); if (b && input) attachDictation(input, b, { fallback: 'hide', status: form.insertAdjacentElement('afterend', Object.assign(document.createElement('p'), { className: 'stamp' })) }); } };
+const setupSpeech = () => { const btn = document.getElementById('mic'); if (!btn || btn.disabled) return; attachDictation(document.getElementById('text'), btn, { interim: document.getElementById('interim'), status: document.getElementById('state') }); };
+
+// ---- the flow: the canvas (public/canvas.js). One board element lives across the renders so the view (pan, zoom,
+// selection) survives every redraw; the Flot view puts it back in its slot and hands it the graph.
+// A node: the letter, the name, line 2 = the state and « spent / ceiling » (the estimate before the launch), the bar at
+// the true share of the ceiling. The column labels say what each wave waits for.
+const WAITS = keyed('plan.w.', ['permission', 'reply', 'review', 'ask-budget', 'run-tests']);
+// The state a node shows; `mine` and `verb` draw the « À toi · Verbe » pill (public/canvas.js) for what the developer alone
+// does (public/todo.js needsDev: with a pilot present an ordinary reply, a permission or a review are the pilot's)
+const VERB_OF = { permission: 'allow', reply: 'reply', review: 'review', merge: 'merge' };
+const humanStop = (s, p) => !!(p.kind === 'reply' && Number.isInteger(p.stop) && s.stops && s.stops[p.stop] && typeof s.stops[p.stop] === 'object' && ['taste', 'data', 'security', 'release'].includes(s.stops[p.stop].kind));
+const nodeState = (s, x) => { const ask = (x.pending || []).find((p) => asks({ p }));
+  if (ask) { const mine = forDev({ s, x, p: ask }); const verb = ask.kind === 'reply' && humanStop(s, ask) ? 'judge' : VERB_OF[ask.kind] || null; return { text: mine ? WAITS[ask.kind] || T('plan.w.reply') : T('plan.waitsPilot'), tone: 'wait', mine, verb: mine ? verb : null }; }
+  if (x.health === 'error') return { text: HEALTH.error, tone: 'err', mine: false };
+  if (x.status === 'running') return { text: x.queued ? 'En file' : STATUSES.running, tone: 'run', mine: false };
+  if (x.status === 'waiting') return { text: T('plan.waitsPilot'), tone: 'wait', mine: false };
+  if (toMerge(x)) return { text: T('plan.w.merge'), tone: 'wait', mine: true, verb: 'merge' };
+  if (x.status === 'done') return { text: x.worktree && x.worktree.merged ? T('plan.mergedCap') : x.pr ? T('plan.donePr', { n: x.pr.number }) : T('plan.st.done'), tone: 'done', mine: false };
+  return { text: STATUSES[x.status] || x.status, tone: '', mine: false }; };
+// The project's flow (GET /api/projectflow, lib/projectflow.mjs) gives this plan its ETAs and its end node (what happens
+// after the plan: docs/flot.md « L'issue d'une phase »); read beside the plan, never blocking it
+let flowInfo = null;
+const loadFlowInfo = async () => { const project = data && data.plan && data.plan.project; if (!project) { flowInfo = null; return; } const r = await api('/api/projectflow?project=' + encodeURIComponent(project) + '&all=1').catch(() => null); flowInfo = r && !r.error ? r : null; };
+const flowNode = (sid) => (flowInfo ? flowInfo.nodes.find((n) => n.id === planId + '/' + sid) : null);
+const flowEnd = () => (flowInfo ? (flowInfo.ends || []).find((e) => e.plan === planId) : null);
+const flowPlan = () => (flowInfo ? flowInfo.plans.find((p) => p.id === planId) : null);
+const whenAt = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : Math.abs(d - Date.now()) < 20 * 36e5 ? T.time(d) : T.dateTime(d); };
+const etaText = (e) => (!e ? '' : e.late ? T('flow.etaLate') : T('flow.etaAt', { t: whenAt(e.at) }));
+const etaTip = (e) => (!e ? T('flow.etaNone') : [T('flow.etaRange', { a: whenAt(e.low), b: whenAt(e.high) }), e.n ? T('flow.etaFrom', { n: e.n, basis: T('flow.basis.' + e.basis) }) : ''].filter(Boolean).join(' · '));
+const youOf = (verb) => (verb ? T('flow.youVerb', { verb: T('flow.v.' + verb) }) : '');
+const endTitle = (e) => (e.kind === 'next' && e.next ? T('flow.end.next', { title: String(e.next.title || '').split(/\s*[:—–(·]\s*/)[0] }) : T('flow.end.' + (e.kind === 'next' ? 'none' : e.kind)));
+const endSub = (e) => (e.waitingFor ? T('flow.end.click') : e.kind === 'next' && e.next && e.next.status === 'merged' ? T('flow.end.merged') : e.kind === 'next' && e.next && e.next.status !== 'todo' ? T('flow.end.started') : e.ready ? '' : e.open ? T('flow.end.beforeN', { n: e.open }) : T('flow.end.whenMerged', { a: e.merged, n: e.total }));
+const endGraph = () => { const e = flowEnd(); if (!e) return []; const mine = !!e.waitingFor;
+  return [{ id: planId + '/main', plan: planId, title: endTitle(e), sub: endSub(e), mine, you: mine ? youOf(e.verb) : '', tone: mine ? 'wait' : e.ready ? 'done' : '', eta: e.ready ? '' : etaText(e.eta), etaTip: e.ready || !e.eta ? '' : etaTip(e.eta) }]; };
+const graphOf = () => { const sessions = allSessions(); const ids = new Set(sessions.map((s) => s.id));
+  return { plans: [{ id: planId, frame: false }],
+    nodes: sessions.map((s) => { const x = stateFor(s); const e = estOf(s); const b = budgetOf(s, x); const u = x.usage; const st = nodeState(s, x);
+      const cost = u && Number.isFinite(u.cost) ? `${fmtCost(u.cost)} / ${fmtBudget(b)}` : e ? `≈ ${fmtCost(e.cost)} / ${fmtBudget(b)}` : `— / ${fmtBudget(b)}`;
+      const fn = flowNode(s.id); const eta = fn && fn.eta ? fn.eta : null;
+      return { id: s.id, plan: planId, letter: s.id, name: s.name || x.name || s.id, wave: s.wave || 1, state: st.text, cost, frac: u && Number.isFinite(b) && b > 0 ? u.cost / b : 0, tone: st.tone, mine: st.mine, you: st.mine ? youOf(st.verb) : '', eta: etaText(eta), etaTip: eta ? etaTip(eta) : '',
+        label: `${s.id}, ${s.name || s.id}, ${st.mine && st.verb ? youOf(st.verb) : st.text}, ${cost}${s.model ? ', ' + (MODEL_NAMES[s.model] || s.model) : ''}${eta ? ', ' + etaText(eta) : ''}` }; }),
+    edges: [...edgesOf().filter((e) => ids.has(e.from) && ids.has(e.to)).map((e) => ({ from: e.from, to: e.to, kind: e.wave ? 'wave' : 'after', met: !!(byId()[e.from] && byId()[e.from].worktree && byId()[e.from].worktree.merged) })),
+      ...(flowEnd() ? (flowInfo.edges || []).filter((e) => e.kind === 'merge' && e.to === planId + '/main').map((e) => ({ from: e.from.slice(planId.length + 1), to: planId + '/main', kind: 'merge', met: e.met })).filter((e) => ids.has(e.from)) : [])],
+    ends: endGraph() }; };
+// The gesture of a card from its pill: merge here; judge, reply and allow in the session's tab; launch the next plan from the end node
+const notesAct = (sid, text) => { notes['act:' + sid] = text; };
+const actOn = async (id) => {
+  if (id === planId + '/main') { const e = flowEnd(); if (e && e.verb === 'launch' && e.next) { const r = await api('/api/launch', { plan: e.next.id }).catch((err) => ({ error: err.message })); if (r.error) { notes['act:end'] = T('flow.end.launchFailed', { e: r.error }); render(); } else location.href = P.withProject('/plan/' + encodeURIComponent(e.next.id), data.plan.project); } else { chosen = id; render(); } return; }
+  const s = sessionOf(id); if (!s) return; const st = nodeState(s, stateFor(s));
+  if (st.verb === 'merge') { delete notes['act:' + id]; const r = await sessionApi(id, 'merge', {}).catch((err) => ({ error: err.message })); if (r.conflict) notesAct(id, T('plan.conflict', { files: (r.files || []).join(', ') || T('plan.seeWorktree'), s: id })); else if (r.error) notesAct(id, r.error); await load(); return; }
+  openSession(id); };
+// the screen's keys (the « ? » help) and its Échap (docs/phase11/ux.md §4.4): the refusal field, then what ux.js or the
+// fallback closes (a details, a line unfolded), then the detail of the node, whose focus goes back to the node
+const ui = EscadrilleCanvas.screen({
+  keys: () => [...EscadrilleCanvas.canvasKeys(), [['←', '→'], T('plan.k.tabs')], [['a'], T('plan.k.allow')], [['r'], T('plan.k.deny')], ...EscadrilleCanvas.commonKeys()],
+  escape: () => { const a = document.activeElement; if (!a || !a.closest) return false;
+    const deny = a.closest('[data-deny]'); if (deny) { const w = deny.closest('[data-pid]'); denying.delete(w.dataset.sid + ':' + w.dataset.pid); render(); const b = canvas.querySelector(`[data-sid="${CSS.escape(w.dataset.sid)}"][data-pid="${CSS.escape(w.dataset.pid)}"] [data-answer="deny"]`); if (b) b.focus({ preventScroll: true }); return true; }
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.closest('details[open], [aria-expanded="true"]:not(.cv-node)') || !chosen) return false;
+    closeDetail(); return true; } });
+const closeDetail = () => { if (cv && boardEl.isConnected && cv.selected() === chosen && cv.close()) return; chosen = null; render(); };
+const boardEl = document.createElement('div'); boardEl.className = 'board'; boardEl.setAttribute('aria-label', T('plan.boardAria'));
+let cv = null;
+const openSession = (id) => { const s = sessionOf(id); if (s && launched(stateFor(s))) { tab = id; view = 'flow'; const q = new URLSearchParams(location.search); q.set('tab', tab); history.replaceState(null, '', '?' + q.toString() + '#flow'); render(); } else { chosen = id; render(); } };
+const mountBoard = () => { const slot = document.getElementById('boardSlot'); if (!slot) return; slot.replaceWith(boardEl);
+  if (!cv) cv = EscadrilleCanvas.mount(boardEl, { key: 'plan:' + planId, help: ui.help, onSelect: (id) => { chosen = id; render(); }, onAct: actOn, onOpen: (id) => { if (id === planId + '/main') { chosen = id; render(); } else openSession(id); } });
+  cv.setData(graphOf(), { empty: esc(T('plan.noSession')) }); cv.setSelected(chosen, { reveal: false }); };
+// the detail of the end node: what happens after the plan, and the one button when it waits for the click
+const endDetail = () => { const e = flowEnd(); if (!e) return ''; const mine = !!e.waitingFor;
+  return `<section class="detail" aria-labelledby="d-h"><header><h2 id="d-h">${esc(endTitle(e))}</h2><span class="meta">${esc(mine ? youOf(e.verb) : endSub(e) || T('flow.ofMerged', { a: e.merged, n: e.total }))}${!e.ready && e.eta ? ' · ' + esc(etaText(e.eta)) + ' (' + esc(etaTip(e.eta)) + ')' : ''}</span><button type="button" class="btn ghost close" data-close aria-label="${esc(T('plan.closeDetail'))}">${esc(T('plan.close'))}</button></header>
+    ${noteOf(notes['act:end'], (h) => `<p class="why neg" style="grid-column:1/-1">${h}</p>`)}
+    <div class="foot">${e.verb === 'launch' && e.next ? `<button type="button" class="btn primary" data-end-launch>${esc(T('flow.end.launch', { title: String(e.next.title || '').split(/\s*[:—–(·]\s*/)[0] }))}</button>` : ''}${e.next ? `<a class="btn" href="${esc(P.withProject('/plan/' + encodeURIComponent(e.next.id), data.plan.project))}">${esc(T('flow.end.open'))}</a>` : ''}</div>
+  </section>`; };
+const detail = () => { if (chosen === planId + '/main') return endDetail(); const s = allSessions().find((x) => x.id === chosen); if (!s) return ''; const x = stateFor(s); const e = estOf(s); const kv = (k, v, dim) => `<div class="kv"><span class="k">${k}</span><span class="v ${dim ? 'dim' : ''}">${v}</span></div>`;
+  const fn = flowNode(s.id); const eta = fn && fn.eta ? fn.eta : null; const st = nodeState(s, x);
+  const scope = e && e.basis ? (['project', 'all', 'none'].includes(e.basis.scope) ? T('plan.scope.' + e.basis.scope) : e.basis.scope) : '';
+  return `<section class="detail" aria-labelledby="d-h"><header><h2 id="d-h">${esc(s.id)} · ${esc(s.name)}</h2><span class="meta">${esc(STATUSES[x.status] || x.status)}${x.health && x.health !== 'ok' ? ' · ' + HEALTH[x.health] : ''}</span><button type="button" class="btn ghost close" data-close aria-label="${esc(T('plan.closeDetail'))}">${esc(T('plan.close'))}</button></header>
+    <div>${eta ? kv(T('flow.eta'), `${esc(etaText(eta))} <span class="k">(${esc(etaTip(eta))})</span>`) : ''}${st.mine && st.verb === 'merge' ? kv(T('flow.you'), `<button type="button" class="btn primary" data-merge-node="${esc(s.id)}">${esc(T('plan.merge'))}</button>${noteOf(notes['act:' + s.id], (h) => ` <span class="neg">${h}</span>`)}`) : ''}${kv(T('plan.where'), esc(s.where || s.path || '–'))}${s.when ? kv(T('plan.when'), esc(s.when)) : ''}${kv(T('plan.folder'), `<span title="${esc(s.path)}">${esc((s.path || '').split('/').slice(-2).join('/') || '–')}</span>`)}${kv(T('plan.model'), s.fableWhy ? `<span tabindex="0" data-tip="${esc(s.fableWhy)}">${esc(MODEL_NAMES[s.model] || s.model)}</span>` : esc(MODEL_NAMES[s.model] || s.model || '–'), !s.model)}</div>
+    <div>${e ? kv(T('plan.tokens'), `${fmtTokens(e.tokens)} <span class="k">(${fmtTokens(e.low)} – ${fmtTokens(e.high)})</span>`) + kv(T('plan.readWritten'), `${fmtTokens(e.input)} · ${fmtTokens(e.output)}`) + kv(T('plan.cost'), fmtCost(e.cost)) + kv(T('plan.weeklyQuota'), Number.isFinite(e.weeklyPct) ? fmtPct(e.weeklyPct) : esc(T('plan.notMeasured')), !Number.isFinite(e.weeklyPct)) + (e.basis ? kv(T('plan.basedOn'), esc(T('plan.basis', { sessions: T('main.sessionsN', { n: e.basis.sessions }), scope }))) : '') : kv(T('plan.estimate'), esc(T('plan.coming')), true)}</div>
+    ${x.claude ? `<p class="claude" style="grid-column:1/-1"><b>Claude</b> ${esc(x.claude)}<time>${when(x.at)}</time></p>` : ''}${x.why && x.health !== 'ok' ? `<p class="why ${x.health === 'error' ? 'neg' : ''}" style="grid-column:1/-1">${esc(x.why)}</p>` : ''}
+    ${stopsBlock(s, x)}
+    ${reviewBlock(s, x)}
+    ${prBlock(s, x, true) ? `<div style="grid-column:1/-1">${prBlock(s, x, true)}</div>` : ''}
+    <div class="foot">${launched(x) ? `<button type="button" class="btn" data-tab="${esc(s.id)}">${esc(T('plan.openChat', { s: s.id }))}</button>` : ''}<button type="button" class="card-link" data-view="sessions" data-goto="${esc(s.id)}">${esc(T('plan.fullCard'))}</button></div>
+  </section>`; };
+// The total of the plan in one line, then why the weekly share is missing when it is
+const totalLine = () => { const est = data.estimate; if (!est || !est.total) return `<section class="total" aria-labelledby="tot-h"><h2 id="tot-h" class="stamp">${esc(T('plan.total'))}</h2><p class="line"><span class="m">${esc(T('plan.estComing'))}</span></p></section>`;
+  const t = est.total; const qNow = claude && claude.weekly && Number.isFinite(claude.weekly.pct) ? claude.weekly.pct / 100 : null; // the account's share, the one the home shows (/api/status), never a reading from before the last reset
+  const qAfter = qNow != null && Number.isFinite(t.weeklyNow) && Number.isFinite(t.weeklyAfter) ? qNow + (t.weeklyAfter - t.weeklyNow) : null; const cal = est.calibration && est.calibration.calibrated && qAfter != null;
+  return `<section class="total" aria-labelledby="tot-h"><h2 id="tot-h" class="stamp">${esc(T('plan.total'))}</h2><p class="line"><span><b>≈ ${fmtTokens(t.tokens)}</b> ${esc(T('esc.tokens'))} <span class="m">(${fmtTokens(t.low)} – ${fmtTokens(t.high)})</span></span><span>${fmtCost(t.cost)} <span class="m">${esc(T('plan.atList'))}</span></span>${cal ? `<span>${esc(T('plan.quotaMove', { a: fmtPct(qNow) }))} <b>${fmtPct(qAfter)}</b>${t.resetsAt ? ` <span class="m">${esc(T('plan.resets', { t: fmtWhen(t.resetsAt) }))}</span>` : ''}</span>` : ''}</p>${cal ? '' : `<p class="why" style="background:none;padding:0;color:var(--muted)">${esc(T('plan.noQuota'))}</p>`}</section>`; };
+// ---- la mesure (session F, docs/mesure.md): this plan's three figures beside the total, nothing without data.
+// One block: the session L adds its « Autonomie » line inside it.
+const measureBlock = () => { const lines = window.Measure ? Measure.lines(data.metrics, { plan: true }) : ''; return lines ? `<section class="measure" aria-label="La mesure du plan" data-region="measure">${lines}</section>` : ''; };
+// The story (POST /api/plan/:id/story): one line under the export, the file's path once written
+let story = null;
+const storyLine = () => `<p class="story-line">${story && story.file ? `${esc(T('plan.storyWritten'))} <span class="path">${esc(story.file)}</span> <button type="button" class="card-link" id="story">${esc(T('plan.rewrite'))}</button>` : story && story.error ? `<span title="${esc(story.error)}">${esc(T('plan.storyFailed'))}</span> <button type="button" class="card-link" id="story">${esc(T('plan.retry'))}</button>` : `<button type="button" class="card-link" id="story">${esc(T('plan.tell'))}</button> <span class="m">${esc(T('plan.tellHint'))}</span>`}</p>`;
+const writeStory = async () => { try { const r = await api(`/api/plan/${encodeURIComponent(data.plan.id)}/story`, {}); story = r.ok ? r : { error: r.error || T('plan.error') }; } catch (e) { story = { error: e.message }; } render(); };
+// ---- fin de la mesure
+// <!-- L: the autonomy of the plan (docs/autonomy.md) --> one line in the head, a panel that only hardens; the review of a session
+const AMODES = ['surveille', 'guide', 'autonome'].map((id) => [id, { toString: () => T('mode.' + id) }]); const AFIXED = { map: (f) => [1, 2, 3, 4, 5].map((k) => f(T('set.fixed' + k))) }; // i18n-ok: the mode ids
+let autoOpen = false; let autoNote = ''; const diffs = {}; const diffOpen = new Set();
+const fallbackIn = (at) => { const m = Math.max(0, Math.ceil((Date.parse(at) - Date.now()) / 60000)); return m ? T('plan.min', { n: m }) : T('plan.instant'); };
+const autonomyHead = () => { const a = data.plan.autonomy; if (!a) return ''; const r = AMODES.findIndex(([id]) => id === a.mode);
+  return `<details class="net auto" id="autoHead" ${autoOpen ? 'open' : ''}><summary>${esc(data.plan.autonomyLine || '')}</summary><form class="net-body" id="autoForm">
+    <p class="note">${esc(T('plan.contract'))}</p>
+    <label>${esc(T('plan.mode'))} <select class="control" name="mode">${AMODES.slice(0, r + 1).map(([id, n]) => `<option value="${id}" ${id === a.mode ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <label>${esc(T('plan.addGuard'))} <input class="control" name="guard" placeholder="infra/**"></label>
+    <label>${esc(T('plan.planCap'))} <input class="control" name="cap" type="number" min="0.5" step="0.5" placeholder="${a.planCapUsd ?? ''}"></label>
+    <div><button class="btn" type="submit">${esc(T('plan.harden'))}</button> <span class="note" role="status">${esc(autoNote)}</span></div>
+    <details><summary>${esc(T('set.fixed'))}</summary><ul>${AFIXED.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></details></form></details>`; };
+// A touched guardrail (docs/autonomy.md): its approval names the commit the diff showed. The button is always there: without
+// the diff, its first click opens and loads it (the head), the next one approves. A branch merged (by the server or outside it,
+// lib/mergedin.mjs) has no review block: nothing to approve, the server refuses it anyway (409).
+const reviewBlock = (s, x) => { const r = x.review; if (!r || r.seen || x.worktree?.merged) return ''; const n = r.files.length; const d = diffs[s.id]; const guard = r.guard?.length ? r.guard : null;
+  const go = `<button type="button" class="btn primary" data-reviewed="${esc(s.id)}"${guard ? ' data-guard="1"' : ''}>${esc(T(guard ? 'plan.guardApprove' : 'plan.seenGo'))}</button>`;
+  return `<div class="review-line" style="grid-column:1/-1"><p><b>${esc(guard ? T('plan.guardTouched', { files: guard.join(', ') }) : T('plan.toReview', { n }))}</b> <button type="button" class="card-link" data-diff="${esc(s.id)}" aria-expanded="${diffOpen.has(s.id)}">${esc(T('plan.seeDiff'))}</button> ${go}</p>${noteOf(notes['guard:' + s.id], (h) => `<p class="note" role="status">${h}</p>`)}${diffOpen.has(s.id) ? `<details open><summary>${esc(r.files.join(', '))}</summary><pre class="patch">${d ? esc(d.patch || d.error || '') : esc(T('plan.loading'))}</pre></details>` : ''}</div>`; };
+const loadDiff = async (sid) => { diffOpen.add(sid); if (diffs[sid] && !diffs[sid].error) return diffs[sid]; delete diffs[sid]; render(); diffs[sid] = await fetch(`/api/plan/${encodeURIComponent(planId)}/session/${encodeURIComponent(sid)}/diff`).then((r) => r.json()).catch((err) => ({ error: err.message })); return diffs[sid]; };
+document.addEventListener('submit', async (e) => { if (e.target.id !== 'autoForm') return; e.preventDefault(); e.stopImmediatePropagation(); const f = e.target; const a = data.plan.autonomy; const body = { mode: f.mode.value };
+  if (f.guard.value.trim()) body.guardedPaths = [...a.guardedPaths, f.guard.value.trim()]; if (f.cap.value) body.planCapUsd = Number(f.cap.value);
+  const r = await api(`/api/plan/${encodeURIComponent(planId)}/settings`, { autonomy: body }).catch((err) => ({ error: err.message })); autoNote = r.error || 'Durci.'; autoOpen = true; await load(); }, true);
+document.addEventListener('toggle', (e) => { if (e.target.id === 'autoHead') autoOpen = e.target.open; }, true);
+document.addEventListener('click', async (e) => { const t = e.target.closest && e.target.closest('[data-diff],[data-reviewed],[data-continue-budget],[data-run-tests],[data-goto-review],[data-copy-path]'); if (!t) return; e.preventDefault(); e.stopPropagation();
+  if (t.dataset.copyPath) { const p = t.dataset.copyPath; if (await copy(p)) { copiedPath = p; render(); setTimeout(() => { copiedPath = ''; render(); }, 2000); } return; }
+  if (t.dataset.diff) { const sid = t.dataset.diff; if (diffOpen.has(sid) && diffs[sid]) diffOpen.delete(sid); else await loadDiff(sid); return render(); }
+  if (t.dataset.reviewed) { const sid = t.dataset.reviewed;
+    if (t.dataset.guard && !diffs[sid]?.head) { delete notes['guard:' + sid]; const d = await loadDiff(sid); notes['guard:' + sid] = d.head ? T('plan.guardLookFirst') : (d.error || T('plan.error')); return render(); }
+    const head = diffs[sid]?.head; const r = await sessionApi(sid, 'reviewed', head ? { head } : {}).catch((err) => ({ error: err.message })); notes['guard:' + sid] = r?.error || ''; if (r?.error) return render(); delete diffs[sid]; diffOpen.delete(sid); return load(); }
+  if (t.dataset.runTests) { t.disabled = true; await sessionApi(t.dataset.runTests, 'run-tests', {}); return load(); }
+  if (t.dataset.continueBudget) { await sessionApi(t.dataset.continueBudget, 'continue-budget', {}); return load(); }
+  if (t.dataset.gotoReview) { chosen = t.dataset.gotoReview; await loadDiff(chosen); return render(); }
+}, true);
+// <!-- /L -->
+// Fable in reserve (docs/fable-reserve.md): one folded line when the plan was written with Fable kept for what needs it;
+// opened, the sessions left on Fable, each with its reason on hover (and on focus, ux.js tip)
+let fresOpen = location.hash === '#fres'; // #fres opens it (a link, a capture)
+const reserveBlock = () => { const p = data.plan; if (!p || p.fableReserve !== true) return ''; const ss = p.sessions || [];
+  const onOpus = ss.filter((s) => /opus/i.test(s.model || '')).length; const kept = ss.filter((s) => /(^|-)fable(-|$)/i.test(s.model || ''));
+  return `<details class="fres" id="fres" ${fresOpen ? 'open' : ''}><summary>${esc(T('plan.fres.line', { n: plural(onOpus) }))}</summary><div class="fres-body"><p class="hint">${esc(T('plan.fres.hint'))}</p>${kept.length ? `<ul class="fres-list" aria-label="${esc(T('plan.fres.kept'))}">${kept.map((s) => `<li tabindex="0" data-tip="${esc(s.fableWhy || T('plan.fres.noWhy'))}"><b>${esc(s.id)}</b><span>${esc(s.name || '')}</span><span class="why">Fable</span></li>`).join('')}</ul>` : `<p class="hint">${esc(T('plan.fres.noneKept'))}</p>`}</div></details>`; };
+document.addEventListener('toggle', (e) => { if (e.target && e.target.id === 'fres') fresOpen = e.target.open; }, true);
+// The three formulas (lib/formulas.mjs): one row each, before any session left; the chosen one checked, another one
+// in one click replaces the plan's sessions (POST /api/plan/:id/formula). A plan with one formula shows nothing.
+let formulaBusy = null; let formulaNote = '';
+const modelsLine = (models) => models.map((m) => `${MODEL_NAMES[m.model] || m.model || '–'} ×${m.n}`).join(' · ');
+const formulasBlock = () => { const list = data.formulas || []; if (list.length < 2) return ''; if (allSessions().some((s) => launched(stateFor(s)))) return '';
+  return `<section class="fml" aria-labelledby="fml-h"><h2 id="fml-h" class="stamp">${esc(T('plan.fml.h'))}</h2><div class="fml-rows" role="radiogroup" aria-labelledby="fml-h">${list.map((f) => `<button type="button" class="fml-row" role="radio" aria-checked="${formulaBusy ? String(f.tier === formulaBusy) : String(f.chosen)}" data-formula="${esc(f.tier)}" ${formulaBusy ? 'disabled' : ''}><span class="fml-dot" aria-hidden="true"></span><span class="fml-name">${esc(T('plan.fml.' + f.tier))}</span><span class="fml-models">${esc(T('plan.fml.sessions', { sessions: plural(f.sessions), models: modelsLine(f.models) }))}</span><span class="fml-cap"><b>${fmtBudget(f.cap)}</b></span><span class="fml-pct">${Number.isFinite(f.weeklyPct) ? esc(T('plan.fml.pct', { p: fmtPct(f.weeklyPct) })) : `<span class="m" title="${esc(T('plan.noQuota'))}">${esc(T('plan.fml.noPct'))}</span>`}</span>${f.gain ? `<span class="fml-gain">${esc(f.gain)}</span>` : ''}</button>`).join('')}</div>${formulaNote ? `<p class="fml-note bad" role="alert">${esc(formulaNote)}</p>` : formulaBusy ? `<p class="fml-note">${esc(T('plan.fml.switching'))}</p>` : ''}</section>`; };
+const chooseFormula = async (tier) => { if (formulaBusy) return; const cur = (data.formulas || []).find((f) => f.chosen); if (cur && cur.tier === tier) return; formulaBusy = tier; formulaNote = ''; render();
+  const r = await api(`/api/plan/${encodeURIComponent(planId)}/formula`, { tier }).catch((e) => ({ error: e.message })); formulaBusy = null; formulaNote = r.error || ''; await load(); };
+document.addEventListener('click', (e) => { const t = e.target.closest && e.target.closest('[data-formula]'); if (!t) return; e.preventDefault(); chooseFormula(t.dataset.formula); });
+const autoMergeOn = () => !!((data.settings && data.settings.autoMerge) ?? (data.plan.settings && data.plan.settings.autoMerge));
+// The first wave's sessions still to launch: « Lancer la multi-session » lives in the status line at the top of the
+// page (Dev, 6 November 22:50: under the flow it was not practical, above it a big block in the way)
+const toLaunch = () => { const first = wavesOf()[0]; return first ? first.items.filter((s) => stateFor(s).status === 'todo' && s.path && s.prompt) : []; };
+const launchBtn = () => { const todo = toLaunch(); if (!todo.length && !launching) return '';
+  return `<button type="button" class="btn primary" id="launchAll" ${launching || !todo.length ? 'disabled' : ''}>${esc(launching ? T('plan.launching') : T('plan.launchAll'))}</button>`; };
+// Under the flow: the tally alone (what leaves with the click, or how many are done) and the auto merge
+const launchBlock = () => { if (!wavesOf()[0]) return ''; const todo = toLaunch(); const f = figures();
+  const tally = launchError || (todo.length ? T('plan.tallyTodo', { sessions: plural(todo.length) }) : T('plan.tallyDone', { a: f.done, n: f.rows.length }));
+  return `<div class="launch"><span class="tally ${launchError ? 'bad' : ''}" id="launchTally">${esc(tally)}</span></div>${autoMergeOn() ? `<label class="automerge"><input type="checkbox" id="autoMerge" checked>${esc(T('plan.autoMerge'))}</label>` : ''}`; };
+// The plan's network: the domains its sessions may reach outside localhost, folded into one line
+// (a plan without `network` says « aucun domaine »; the line opens only when the developer opens it)
+const netOpen = { on: false }; let netNote = '';
+// a host name, an IPv4 address or localhost, with a port or not (127.0.0.1:3318): the server's validateNetwork has the last word
+const DOMAIN = /^(?:(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}|\d{1,3}(?:\.\d{1,3}){3}|localhost)(?::\d{1,5})?$/;
+const networkOf = () => (data.plan.network || []).slice();
+const networkBlock = () => { const list = networkOf(); const k = 'net:add';
+  return `<details class="net" id="net" ${netOpen.on ? 'open' : ''}><summary>${esc(T('plan.network', { list: list.length ? list.join(', ') : T('plan.noDomain') }))}</summary><div class="net-body">
+    ${list.length ? `<ul class="net-list">${list.map((d) => `<li><span>${esc(d)}</span><button type="button" class="btn ghost" data-net-remove="${esc(d)}" aria-label="${esc(T('plan.removeD', { d }))}">${esc(T('plan.remove'))}</button></li>`).join('')}</ul>` : ''}
+    <form class="net-add" data-net-add><input class="control" data-draft="${k}" value="${esc(drafts[k] || '')}" placeholder="registry.npmjs.org" aria-label="${esc(T('plan.domainAria'))}" aria-describedby="net-hint" autocomplete="off" spellcheck="false"><button class="btn" type="submit">${esc(T('plan.add'))}</button></form>
+    <p class="hint" id="net-hint">${netNote ? `<span class="bad">${esc(netNote)}</span> ` : ''}${esc(T('plan.netHint'))}</p></div></details>`; };
+const saveNetwork = async (list) => { data.plan.network = list; netNote = ''; render(); const r = await api(`/api/plan/${encodeURIComponent(planId)}/settings`, { network: list }).catch((e) => ({ error: e.message })); if (r.error) { netNote = r.error; } await load(); };
+// The head every view shares (direction §6): the plan's name, the figures on one line (as the Flot), a problem named
+// at the end, the other plans and the JSON at the right, « À faire », then the four tabs
+const planSub = () => { const f = figures();
+  const waits = [...new Set(pendings().filter(asks).map((w) => w.s.id))]; // the sessions that wait for the developer, counted once each
+  const problems = [...f.rows.filter((r) => r.x.health === 'error').map((r) => T('plan.inError', { s: r.s.id })), ...f.rows.filter((r) => r.x.health === 'drift').map((r) => T('plan.drifts', { s: r.s.id }))];
+  const spent = f.rows.reduce((a, r) => a + ((r.x.usage && r.x.usage.cost) || 0), 0); const cap = f.rows.reduce((a, r) => a + (Number.isFinite(budgetOf(r.s, r.x)) ? budgetOf(r.s, r.x) : 0), 0);
+  return `<b>${f.running}</b> ${esc(T('plan.running'))} · <b>${waits.length}</b> ${esc(T('plan.waitingN', { n: waits.length }))} · <b>${fmtCost(spent)}</b> ${esc(T('plan.ofCap', { b: fmtBudget(cap) }))}${problems.length ? ` · <span class="t-neg">${esc(problems.join(', '))}</span>` : ''}`; };
+const planHead = () => { const { plan } = data; return `<div class="title-row"><div><h1>${esc(plan.title || plan.id)}</h1><p class="sub">${planSub()}</p></div>${planTools()}</div>${todoBlock(pendings())}${viewsBar()}`; };
+const flowView = () => {
+  const flow = `<div id="boardSlot"></div>`;
+  const journal = `<section class="panel journal" aria-labelledby="j-h"><header><h2 id="j-h">${esc(T('plan.journal'))}</h2><button class="card-link" data-view="journal">${esc(T('plan.allLog', { n: data.log.length }))}</button></header>${logTable(data.log.slice(0, 6))}</section>`;
+  if (tab !== 'flow' && !(sessionOf(tab) && launched(stateFor(sessionOf(tab))))) tab = 'flow';
+  const body = tab === 'flow' ? `${flow}${detail()}${reserveBlock()}${formulasBlock()}${totalLine()}${measureBlock()}${autonomyHead()}${launchBlock()}${networkBlock()}${journal}` : sessionTab(tab);
+  return `${planHead()}${tabsBar()}${body}`; };
+
+// ---- the sessions: the cards, the strip, the journal excerpt
+const card = (s) => { const x = stateFor(s); const launchable = x.status !== 'later' && s.path && s.prompt;
+  return `<section class="card ${x.status} ${chosen === s.id ? 'chosen' : ''}" id="card-${esc(s.id)}" data-id="${esc(s.id)}" aria-labelledby="t-${esc(s.id)}">
+    <div class="head"><div class="badge">${esc(s.id)}</div><div style="min-width:0"><h3 id="t-${esc(s.id)}">${esc(s.name || x.name || s.id)}${queuedTag(x)}</h3>${s.where ? `<p class="where">${esc(s.where)}</p>` : ''}${s.when && x.status !== 'done' ? `<p class="where">${esc(s.when)}</p>` : ''}</div></div>
+    <div class="pills">${statusPill(x)}${healthPill(x)}${s.model ? `<span class="pill">${esc(MODEL_NAMES[s.model] || s.model)}</span>` : ''}</div>
+    ${spend(s, x) ? `<p class="spend">${[spend(s, x).cost, spend(s, x).ctx, handoffNote(x)].filter(Boolean).join('<span aria-hidden="true">·</span>')}</p>` : Number.isFinite(budgetOf(s, x)) ? `<p class="spend"><span>${esc(T('plan.capOnly', { b: fmtBudget(budgetOf(s, x)) }))}</span></p>` : ''}
+    ${raiseLine(s, x)}
+    ${x.why && x.health !== 'ok' ? `<p class="why ${x.health === 'error' ? 'neg' : ''}">${esc(x.why)}</p>` : ''}
+    ${x.claude ? `<p class="claude"><b>Claude</b> ${esc(x.claude)}<time>${when(x.at)}</time></p>` : ''}
+    ${stopsBlock(s, x)}
+    ${reviewBlock(s, x)}
+    <textarea class="note" data-note placeholder="Où j'en suis">${esc(x.note)}</textarea>
+    ${prBlock(s, x, true)}
+    <div class="actions">${launchable ? `<details><summary>${esc(T('plan.byHand'))}</summary><div class="manual"><code>cd ${esc(s.path)}</code><div><button class="btn" data-copycmd="1">${esc(T('plan.copyCd'))}</button> <button class="btn" data-copy="1">${esc(T('plan.copyPrompt'))}</button> <span class="copied" data-copied></span></div><pre data-prompt>${esc(s.prompt)}</pre></div></details>` : `<span class="stamp">${x.status === 'later' ? esc(T('plan.laterCard')) : ''}</span>`}${x.worktree && !x.worktree.merged ? `<a class="card-link" href="/review?plan=${encodeURIComponent(data.plan.id)}&session=${encodeURIComponent(s.id)}">${esc(T('plan.review'))}</a>` : ''}</div>
+  </section>`; };
+const sessionsView = () => { const { plan } = data; const f = figures(); const waves = wavesOf();
+  const kpis = `<div class="kpis" role="list"><div class="kpi" role="listitem"><div class="kpi-label">${esc(T('plan.k.todo'))}</div><div class="kpi-value">${f.todo}</div></div><div class="kpi" role="listitem"><div class="kpi-label">${esc(T('plan.k.running'))}</div><div class="kpi-value">${f.running}</div></div><div class="kpi" role="listitem"><div class="kpi-label">${esc(T('plan.k.waiting'))}</div><div class="kpi-value ${f.waiting ? 'wait' : ''}">${f.waiting}</div></div><div class="kpi" role="listitem"><div class="kpi-label">${esc(T('plan.k.done'))}</div><div class="kpi-value">${f.done}<small>/ ${f.rows.length}</small></div></div><div class="kpi" role="listitem"><div class="kpi-label">${esc(T('plan.k.off'))}</div><div class="kpi-value ${f.errors ? 'bad' : ''}">${f.errors + f.drifts}${f.errors || f.drifts ? `<small>${esc(T('plan.errDrift', { e: T('plan.errors', { n: f.errors }), d: T('plan.driftsN', { n: f.drifts }) }))}</small>` : ''}</div></div></div>`;
+  const waveHtml = (w) => { const cls = w.items.length === 1 ? 'one' : w.items.length === 2 ? 'two' : ''; return `<section class="wave" aria-labelledby="w-${w.n}"><header><h2 id="w-${w.n}">${esc(w.title)}</h2><span class="meta">${esc(T('plan.windows', { n: w.items.length }))}${w.text ? ' · ' + esc(w.text) : ''}</span></header><div class="row3 ${cls}">${w.items.map(card).join('')}</div></section>`; };
+  const wavesHtml = waveHtml(waves[0]) + (waves.length > 1 ? `<div class="later">${waves.slice(1).map(waveHtml).join('')}</div>` : '');
+  const log = data.log.slice(0, 8);
+  const journal = `<section class="panel" aria-labelledby="j-h"><header><h2 id="j-h">${esc(T('plan.journal'))}</h2><button class="card-link" data-view="journal">${esc(T('plan.allLog', { n: data.log.length }))}</button></header>${logTable(log)}</section>`;
+  return `${planHead()}${kpis}${wavesHtml}${journal}`; };
+const logTable = (rows) => rows.length ? `<table><thead><tr><th>${esc(T('plan.th.time'))}</th><th>${esc(T('plan.th.session'))}</th><th>${esc(T('plan.th.state'))}</th><th>${esc(T('plan.th.said'))}</th></tr></thead><tbody>${rows.map((l) => `<tr><td class="t">${when(l.at)}</td><td class="s">${esc(l.session)}</td><td class="st"><span class="dot ${l.health || ''}" aria-hidden="true"></span>${STATUSES[l.status] || esc(l.status)}</td><td>${esc(l.claude)}${l.why ? ` <span class="m">· ${esc(l.why)}</span>` : ''}${l.stops && l.stops.length ? ` <span class="m">· ${esc(T('plan.stopsList', { list: l.stops.map((i) => i + 1).join(', ') }))}</span>` : ''}</td></tr>`).join('')}</tbody></table>` : `<p class="empty">${esc(T('plan.logEmpty'))}</p>`;
+const journalView = () => `${planHead()}${storyLine()}<section class="panel">${logTable(data.log)}</section>`;
+const planView = () => { const p = data.plan; return `${planHead()}${(p.waves || []).map((w) => `<section class="wave"><header><h2>${esc(w.title)}</h2><span class="meta">${esc(w.text || '')}</span></header><section class="panel">${p.sessions.filter((s) => (s.wave || 1) === w.n).map((s) => `<div style="padding:8px 0"><b>${esc(s.id)}</b> · ${esc(s.name)}<span class="m" style="color:var(--muted)"> · ${esc(s.where || '')}</span><br><span style="color:var(--muted);font-size:13px">${esc(s.path || '')}${s.model ? ' · ' + esc(MODEL_NAMES[s.model] || s.model) : ''}${s.after && s.after.length ? ' · ' + esc(T('plan.after', { list: s.after.join(', ') })) : ''}</span><ol style="margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:13px">${(s.stops || []).map((t) => `<li>${esc(t)}</li>`).join('')}</ol><details style="margin-top:6px"><summary>${esc(T('plan.prompt'))}</summary><div class="manual"><pre>${esc(s.prompt || '')}</pre></div></details></div>`).join('')}</section></section>`).join('')}<p class="stamp">${esc(T('plan.file', { id: p.id }))}${p.escadrille ? ` · <a class="card-link" href="/e/${encodeURIComponent(p.escadrille)}">${esc(T('plan.writtenBy'))}</a>` : ''}</p>`; };
+
+let pnFor = null; // the project the sidebar was pointed at
+const TITLES = new Proxy({}, { get: (o, k) => (k === 'flow' ? '' : ['sessions', 'journal', 'plan'].includes(k) ? ' · ' + T('plan.t.' + k) : undefined) });
+// The four views, tabs in the content under the title (the hash is kept): Flot · Sessions · Journal · Prompts; the
+// count of what waits on Flot. In the title, on the right: the project's other plans and the JSON.
+let allPlans = [];
+const VIEW_NAMES = keyed('plan.vn.', ['flow', 'sessions', 'journal', 'plan']);
+const viewsBar = () => { const n = toAnswer().length; return `<nav class="tabs views" aria-label="${esc(T('plan.viewsAria'))}">${VIEWS.map((v) => `<a class="tab" href="#${v}" data-view="${v}"${view === v ? ' aria-current="page"' : ''}>${VIEW_NAMES[v]}${v === 'flow' && n ? ` <span class="count">${n}</span>` : ''}</a>`).join('')}</nav>`; };
+const planTools = () => `<div class="plan-tools">${allPlans.length > 1 ? `<select class="control" id="planPick" aria-label="${esc(T('plan.otherPlans'))}">${allPlans.map((p) => `<option value="${esc(p.id)}"${p.id === planId ? ' selected' : ''}>${esc(p.title || p.id)}</option>`).join('')}</select>` : ''}<a class="card-link" href="/api/export/${encodeURIComponent(planId)}" download>${esc(T('plan.export'))}</a></div>`;
+// a full render keeps the focus on the twin of the focused element (same id or data-*): a click or the live stream
+// never drops the keyboard on the body (docs/phase11/ux.md, causes A and B)
+const render = () => EscadrilleCanvas.keepFocus(document, draw);
+const draw = () => { if (!data) return; const { plan } = data; const f = figures();
+  if (plan.project && pnFor !== plan.project) { pnFor = plan.project; window.escadrilleSidebar.render(document.getElementById('sidebar'), { project: plan.project, plan: plan.id }); }
+  const waits = pendings(); maybeNotify(waits); document.title = (waits.some(forDev) ? '● ' : '') + (plan.title || plan.id); document.getElementById('crumb').textContent = (plan.title || plan.id) + TITLES[view];
+  const last = data.log[0]; document.getElementById('stamp').textContent = last ? T('plan.lastUpdate', { t: when(last.at), s: last.session }) : '';
+  retireSlot(plan);
+  const a = document.activeElement; const editing = a && a.dataset && a.dataset.note !== undefined; let keep = null;
+  if (editing) keep = { id: a.closest('.card').dataset.id, val: a.value, pos: a.selectionStart };
+  const dk = a && a.dataset && a.dataset.draft; const dsel = dk ? [a.selectionStart, a.selectionEnd] : null; const prevTab = canvas.dataset.shown; const sy = window.scrollY;
+  canvas.innerHTML = view === 'journal' ? journalView() : view === 'plan' ? planView() : view === 'sessions' ? sessionsView() : flowView();
+  if (keep) { const ta = canvas.querySelector(`.card[data-id="${CSS.escape(keep.id)}"] [data-note]`); if (ta) { ta.value = keep.val; ta.focus(); ta.setSelectionRange(keep.pos, keep.pos); } }
+  if (dk) { const el = canvas.querySelector(`[data-draft="${CSS.escape(dk)}"]`); if (el) { el.focus(); el.setSelectionRange(dsel[0], dsel[1]); } }
+  setupDictation();
+  canvas.dataset.shown = view === 'flow' ? tab : ''; if (view === 'flow' && tab !== 'flow') { setupSpeech(); if (prevTab !== tab && msgs[tab]) window.scrollTo({ top: document.documentElement.scrollHeight }); else window.scrollTo({ top: sy }); }
+  mountBoard();
+  console.assert(f.todo + f.running + f.waiting + f.done + f.later === f.rows.length, 'the strip counts every session once');
+  if (data.estimate && data.estimate.total) { const sum = Object.values(data.estimate.sessions || {}).reduce((n, e) => n + (e.tokens || 0), 0); console.assert(Math.abs(sum - data.estimate.total.tokens) <= 1 + data.estimate.total.tokens / 1000, 'the total is the sum of the sessions'); } };
+const loadClaude = async () => { try { const st = await api('/api/status?project=' + encodeURIComponent((data && data.plan && data.plan.project) || params.get('project') || '')); claude = st.claude || null; pilotPresent = !!(st.pilot && st.pilot.present); } catch { claude = null; } };
+// « Retirer le plan » (docs/flot.md): in the top bar, secondary, with what runs and what it has cost; a retired plan says so and reopens
+const retireSlot = (plan) => {
+  const el = document.getElementById('retire'); if (!el || !window.escadrilleRetire) return;
+  const retired = plan.status === 'closed' || plan.closed === true || !!plan.closedAt;
+  const running = data.state.filter((x) => ['running', 'waiting', 'paused'].includes(x.status) && x.mode === 'page').map((x) => x.id);
+  const cost = data.state.reduce((a, x) => a + ((x.usage && x.usage.cost) || 0), 0);
+  el.innerHTML = retired
+    ? `<span class="pill">${esc(T('retire.badge'))}</span><button type="button" class="btn" data-reopen-plan>${esc(T('retire.reopen'))}</button>`
+    : `<span class="rt-live">${esc(T('retire.running', { n: running.length, cost: window.T.usd(cost, 2) }))}</span><button type="button" class="btn ghost" data-retire-plan>${esc(T('retire.button'))}</button>`;
+  const r = el.querySelector('[data-retire-plan]'); if (r) r.onclick = () => window.escadrilleRetire.ask({ id: plan.id, title: plan.title || plan.id, running, cost }, () => load());
+  const o = el.querySelector('[data-reopen-plan]'); if (o) o.onclick = () => window.escadrilleRetire.reopen(plan.id, () => load()).catch(() => {});
+};
+const load = async () => { data = await api('/api/plan/' + encodeURIComponent(planId)); await Promise.all([loadClaude(), loadFlowInfo()]);
+  render(); if (!linearSettings && data.state.some(prCandidate)) loadLinear(); };
+// The one button: the server launches the first wave in the page; the next waves leave on their own
+const launchAll = async () => { if (launching) return; launching = true; launchError = ''; render();
+  const r = await api('/api/launch', { plan: planId }).catch((e) => ({ error: e.message })); launching = null; launchError = r.error || ''; await load(); };
+document.addEventListener('click', async (e) => {
+  const v = e.target.closest('[data-view]'); if (v) { view = v.dataset.view; history.replaceState(null, '', location.search + '#' + view); if (v.dataset.goto) chosen = v.dataset.goto; render(); if (v.dataset.goto) { const el = document.getElementById('card-' + v.dataset.goto); if (el) el.scrollIntoView({ block: 'start' }); } return; }
+  if (e.target.closest('[data-close]')) { closeDetail(); return; }
+  if (e.target.id === 'story') { writeStory(); return; }
+  if (e.target.id === 'launchAll') { launchAll(); return; }
+  if (e.target.closest('[data-end-launch]')) { e.target.disabled = true; actOn(planId + '/main'); return; }
+  const mn = e.target.closest('[data-merge-node]'); if (mn) { mn.disabled = true; actOn(mn.dataset.mergeNode); return; }
+  const dm = e.target.closest('[data-dismiss]'); if (dm) { const w = dm.closest('[data-pid]'); dm.disabled = true; const x = byId()[w.dataset.sid]; if (x) x.pending = (x.pending || []).filter((p) => p.id !== w.dataset.pid); render();
+    await sessionApi(w.dataset.sid, 'dismiss', { id: w.dataset.pid }).catch(() => null); await load(); return; }
+  const fo = e.target.closest('[data-fold]'); if (fo) { const k = fo.dataset.fold; if (unfolded.has(k)) unfolded.delete(k); else unfolded.add(k); render(); return; }
+  const op = e.target.closest('[data-open]'); if (op) { const sid = op.closest('[data-sid]').dataset.sid; const what = op.dataset.open; op.disabled = true; delete notes['open:' + sid];
+    const r = await sessionApi(sid, what, {}).catch((err) => ({ error: err.message }));
+    if (r.error) notes['open:' + sid] = r.error; else if (what === 'open') notes['open:' + sid] = T('plan.folderOpened'); else if (r.url) { const x = byId()[sid]; if (x && x.open) x.open.url = r.url; }
+    render(); if (what === 'open' && !r.error) setTimeout(() => { delete notes['open:' + sid]; render(); }, 3000); if (window.escadrilleMac) window.escadrilleMac.load(); return; }
+  const nr = e.target.closest('[data-net-remove]'); if (nr) { saveNetwork(networkOf().filter((d) => d !== nr.dataset.netRemove)); return; }
+  if (e.target.closest('[data-todo-jump]')) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  const tb = e.target.closest('[data-tab]'); if (tb) { tab = tb.dataset.tab; view = 'flow'; const q = new URLSearchParams(location.search); if (tab === 'flow') q.delete('tab'); else q.set('tab', tab); history.replaceState(null, '', '?' + q.toString() + '#flow'); render(); if (tab === 'flow') window.scrollTo({ top: 0 }); return; }
+  const dc = e.target.closest('[data-deny-cancel]'); if (dc) { const w = dc.closest('[data-pid]'); denying.delete(w.dataset.sid + ':' + w.dataset.pid); render(); return; }
+  const an = e.target.closest('[data-answer]'); if (an) { const w = an.closest('[data-pid]'); const kind = an.dataset.answer; const dkey = w.dataset.sid + ':' + w.dataset.pid;
+    if (kind === 'deny') { if (denying.has(dkey)) denying.delete(dkey); else denying.add(dkey); render(); const f = canvas.querySelector(`[data-draft="${CSS.escape('deny:' + dkey)}"]`); if (f) f.focus(); return; } for (const b2 of w.querySelectorAll('[data-answer]')) b2.disabled = true;
+    const r = await sessionApi(w.dataset.sid, 'answer', { id: w.dataset.pid, allow: kind !== 'deny', always: kind === 'always' }).catch((err) => ({ error: err.message })); if (r.error) { for (const b2 of w.querySelectorAll('[data-answer]')) b2.disabled = false; an.title = r.error; } await load(); return; }
+  const pb = e.target.closest('[data-pr]'); if (pb) { const sid = pb.closest('[data-pr-sid]').dataset.prSid; if (!prBusy.has(sid)) prAct(sid, pb.dataset.pr); return; }
+  const ac = e.target.closest('[data-act]'); if (ac) { const sid = ac.closest('[data-sid]').dataset.sid; const act = ac.dataset.act; ac.disabled = true; delete notes['act:' + sid];
+    const r = await sessionApi(sid, act, {}).catch((err) => ({ error: err.message }));
+    if (r.conflict) notes['act:' + sid] = T('plan.conflict', { files: (r.files || []).join(', ') || T('plan.seeWorktree'), s: sid }); else if (r.error) notes['act:' + sid] = r.error;
+    await load(); return; }
+  if (e.target.id === 'notify') { Notification.requestPermission().then((p) => { if (p === 'granted') localStorage.setItem(notifyKey, '1'); render(); }); return; }
+  const b = e.target.closest('button'); if (!b) return; const cardEl = b.closest('.card'); if (!cardEl) return; const id = cardEl.dataset.id; const s = data.plan.sessions.find((x) => x.id === id) || {};
+  if (b.dataset.copycmd) { const ok = await copy('cd ' + s.path); const old = b.textContent; b.textContent = T(ok ? 'plan.copied' : 'plan.copyRefused'); setTimeout(() => { b.textContent = old; }, 2000); }
+  else if (b.dataset.copy) { const ok = await copy(s.prompt); const tag = cardEl.querySelector('[data-copied]'); tag.textContent = T(ok ? 'plan.copied' : 'plan.selectText'); setTimeout(() => { tag.textContent = ''; }, 2500); }
+});
+document.addEventListener('submit', async (e) => { const f = e.target;
+  if (f.matches('[data-net-add]')) { e.preventDefault(); const input = f.querySelector('input'); const d = input.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/:].*$/, '');
+    if (!d) return; if (!DOMAIN.test(d)) { netNote = T('plan.notDomain', { d }); render(); return; } delete drafts['net:add']; const list = networkOf(); if (!list.includes(d)) list.push(d); saveNetwork(list); return; }
+  if (f.matches('[data-deny]')) { e.preventDefault(); const w = f.closest('[data-pid]'); const k = 'deny:' + w.dataset.sid + ':' + w.dataset.pid; const reason = f.querySelector('input').value.trim(); for (const b2 of w.querySelectorAll('button')) b2.disabled = true;
+    const r = await sessionApi(w.dataset.sid, 'answer', { id: w.dataset.pid, allow: false, always: false, reason }).catch((err) => ({ error: err.message }));
+    if (r.error) { for (const b2 of w.querySelectorAll('button')) b2.disabled = false; return; } denying.delete(w.dataset.sid + ':' + w.dataset.pid); delete drafts[k]; await load(); return; }
+  if (f.matches('[data-raise]')) { e.preventDefault(); const sid = f.dataset.sid; const b = Number(f.querySelector('input').value); delete notes['raise:' + sid];
+    const r = await sessionApi(sid, 'budget', { budget: b }).catch((err) => ({ error: err.message })); if (r.error) notes['raise:' + sid] = r.error; await load(); return; }
+  if (!f.matches('[data-reply], [data-compose]')) return; e.preventDefault();
+  const field = f.querySelector('[data-draft]'); const k = field.dataset.draft; const text = field.value.trim(); if (!text) return; const sid = f.dataset.sid || f.closest('[data-sid]').dataset.sid;
+  const btn = f.querySelector('[type="submit"]'); btn.disabled = true; delete notes[k];
+  const r = await sessionApi(sid, 'message', { text }).catch((err) => ({ error: err.message }));
+  if (r.error) { notes[k] = r.error; btn.disabled = false; render(); return; }
+  delete drafts[k]; field.value = ''; if (msgs[sid]) { const m2 = await sessionApi(sid, 'messages').catch(() => null); if (m2 && m2.messages) msgs[sid] = m2.messages; } await load(); });
+document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('p[data-fold]')) { e.preventDefault(); e.target.click(); return; }
+  // the key of the primary button (a or r) on the focused request: the developer's own press, never an automatic answer
+  if ((e.key === 'a' || e.key === 'r') && !e.metaKey && !e.ctrlKey && !e.altKey && e.target.closest && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { const w = e.target.closest('[data-pid]'); const b = w && w.querySelector(`[data-answer][aria-keyshortcuts="${e.key}"]`); if (b && !b.disabled) { e.preventDefault(); b.click(); return; } }
+  // the session tabs (role="tab", one in the Tab order): ← → to the next one both ways, Home End, Enter or Space opens
+  if (/^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key) && e.target.matches && e.target.matches('[role="tablist"] [role="tab"]')) { e.preventDefault(); const tabs = [...e.target.closest('[role="tablist"]').querySelectorAll('[role="tab"]')]; const i = tabs.indexOf(e.target);
+    const j = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : Math.min(tabs.length - 1, Math.max(0, i + (e.key === 'ArrowRight' ? 1 : -1))); tabs.forEach((t, k) => { t.tabIndex = k === j ? 0 : -1; }); tabs[j].focus(); return; }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target.matches('.composer textarea')) { e.preventDefault(); e.target.form.requestSubmit(); } });
+document.addEventListener('toggle', (e) => { if (e.target.id === 'net') netOpen.on = e.target.open; }, true);
+document.addEventListener('change', (e) => { if (e.target.id === 'planPick') { location.href = P.withProject('/plan/' + encodeURIComponent(e.target.value), data && data.plan.project) + '#' + view; return; }
+  if (e.target.id !== 'autoMerge') return; const on = e.target.checked; data.settings = { ...(data.settings || {}), autoMerge: on }; api(`/api/plan/${encodeURIComponent(planId)}/settings`, { autoMerge: on }); });
+document.addEventListener('input', (e) => { const k = e.target.dataset && e.target.dataset.draft; if (k) drafts[k] = e.target.value; });
+let t; document.addEventListener('input', (e) => { if (!e.target.dataset || e.target.dataset.note === undefined) return; const id = e.target.closest('.card').dataset.id; const note = e.target.value; clearTimeout(t); t = setTimeout(() => { const x = byId()[id]; if (x) x.note = note; api('/api/note', { plan: planId, session: id, note }); }, 500); });
+window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) { view = v; render(); } });
+(async () => {
+  await loadModelNames();
+  if (planId) data = await api('/api/plan/' + encodeURIComponent(planId)).catch(() => null);
+  const project = (data && data.plan && data.plan.project) || new URLSearchParams(location.search).get('project') || null; const scoped = (p) => P.withProject(p, project);
+  if (project) { localStorage.setItem('escadrille.project', project); const q = new URLSearchParams(location.search); q.set('project', project); history.replaceState(null, '', '?' + q.toString() + location.hash); }
+  window.escadrilleSidebar.render(document.getElementById('sidebar'), { project, plan: planId });
+  allPlans = await api(scoped('/api/plans')); const plans = allPlans;
+  if (!planId) planId = plans[0] && plans[0].id; if (!planId) { canvas.innerHTML = `<div class="title-row"><h1>${esc(T('plan.none'))}</h1></div><p class="empty">${esc(T('plan.noneHow'))}</p>`; return; }
+  await load();
+  const connect = () => { const es = new EventSource('/api/events?plan=' + encodeURIComponent(planId)); es.addEventListener('change', () => { load(); if (window.escadrilleMac) window.escadrilleMac.load(); if (window.escadrillePhone) window.escadrillePhone.load(); }); es.addEventListener('pending', load);
+    es.addEventListener('message', (ev) => { let d; try { d = JSON.parse(ev.data); } catch (err) { return; } if (!d || !d.message) return; const list = msgs[d.session]; if (list && !list.some((m2) => m2.seq === d.message.seq)) { list.push(d.message); if (view === 'flow' && tab === d.session) refreshThread(); } }); es.onerror = () => { es.close(); setTimeout(connect, 3000); }; };
+  connect(); setInterval(() => { if (!document.hidden) load(); }, 60000); // a hidden tab asks nothing (docs/perf.md)
+  // another language: the system lines of the threads and the state come from the server, read again
+  escadrilleI18n.onChange(() => { boardEl.setAttribute('aria-label', T('plan.boardAria')); for (const k of Object.keys(msgs)) delete msgs[k]; render(); load(); });
+})();
+</script>
+<script src="/mac.js"></script>
+<script src="/phone.js"></script>
+<script src="/remote.js"></script>
+<script src="/game.js"></script>
+</body>
+</html>

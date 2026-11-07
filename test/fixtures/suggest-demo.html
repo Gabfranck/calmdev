@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escadrille · réponse devinée</title>
+<script>{ const t = new URLSearchParams(location.search).get('theme'); if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; }</script>
+<script src="/i18n.js"></script>
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/mainchat.css">
+<style>
+/* the bench of test/suggest-demo.mjs: the two composers as they stand in their pages, nothing else */
+body { margin: 0; background: var(--ground); color: var(--text); font-family: var(--font); font-size: var(--fs-body); }
+.sgd { max-width: 760px; margin: 0 auto; padding: 32px 24px; display: grid; gap: 40px; }
+.sgd h1 { font-size: var(--fs-title); margin: 0 0 4px; } .sgd h2 { font-size: var(--fs-section); margin: 0 0 8px; }
+.sgd p { margin: 0; color: var(--muted); }
+.sgd section { background: var(--surface); border-radius: var(--radius-card); padding: var(--card-pad); }
+.sgd .composer { position: static; margin-top: 12px; padding: 0; }
+</style>
+</head>
+<body>
+<main class="sgd">
+  <div><h1>Conversation</h1><p>Mots · 4 arrêts attendent</p></div>
+  <section aria-labelledby="sgdMain">
+    <h2 id="sgdMain">Le fil principal</h2>
+    <p>L’arrêt le plus ancien : A, la revue faite.</p>
+    <form class="mc-form" id="mainForm"><div class="composer"><div class="box"><textarea id="text" name="text" rows="3" data-sg data-sg-project="demo" placeholder="Écris à Escadrille" aria-label="Ton message"></textarea><div class="interim" id="interim" aria-live="polite"></div><div class="bar"><span class="state" id="state"></span><button type="submit" class="btn primary" id="send">Envoyer</button></div></div></div></form>
+  </section>
+  <section aria-labelledby="sgdSess">
+    <h2 id="sgdSess">Le fil de la session B</h2>
+    <p>La planche en captures · arrêt de goût, sans repli.</p>
+    <form class="composer" data-compose data-sid="B"><div class="box"><textarea id="text2" data-sg data-sg-project="demo" data-sg-plan="2026-11-02-mots" data-sg-session="B" data-sg-stop="reply-seed-B" rows="2" placeholder="Réponds à B" aria-label="Ton message à B"></textarea><div class="interim" aria-live="polite"></div><div class="bar"><span class="state">Tu parles à B</span><button type="submit" class="btn primary">Envoyer</button></div></div></form>
+  </section>
+</main>
+<script src="/suggest.js"></script>
+<script>
+document.addEventListener('submit', (e) => { e.preventDefault(); const ta = e.target.querySelector('textarea'); ta.value = ''; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && e.target.matches('.composer textarea')) { e.preventDefault(); e.target.form.requestSubmit(); } });
+if (new URLSearchParams(location.search).get('focus') === 'session') document.getElementById('text2').focus(); else document.getElementById('text').focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Architecture</title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* The architecture map (docs/architecture.md). One question: « where is what, and what does this plan change? ».
+   The map is the biggest block: a hand-made SVG, one column per role, a box per module whose height follows its
+   lines; the heaviest imports only. The module read on click sits in a 320px rail at the right (below under
+   1100px). The one hue stays on the data: the selected module and its imports. The delta speaks in the status
+   tints (added, removed, changed), the same pills as the rest of the app. */
+/* phase 9 P3 (direction.md §6): the map takes the width; the module read opens a 360px panel at the right only while
+   a module is selected (the same panel as the Flot's canvas); the legend folds to one line; a plan's delta is a
+   select in the title row. */
+.arch { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.arch.sel { grid-template-columns: minmax(0, 1fr) 360px; }
+.mapwrap { min-width: 0; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+.mapwrap svg { display: block; }
+.title-row .delta { display: inline-flex; align-items: center; gap: 8px; flex: none; } .title-row .delta[hidden] { display: none; } /* an empty select showed on a project without plans */
+.title-row .delta select { width: auto; max-width: 320px; }
+.legend { margin: -8px 0 16px; color: var(--muted); font-size: var(--fs-small); }
+.legend[hidden] { display: none; }
+.legend > summary { color: var(--muted); }
+.legend .items { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; padding: 8px 0 0 12px; }
+.legend .items span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+.legend .add i { background: var(--pill-positive-bg); box-shadow: inset 0 0 0 1.5px var(--positive); }
+.legend .del i { background: var(--pill-negative-bg); box-shadow: inset 0 0 0 1.5px var(--negative); }
+.legend .chg i { background: var(--pill-warning-bg); box-shadow: inset 0 0 0 1.5px var(--warning); }
+/* the SVG takes the app's tokens, light and dark */
+.col-h { fill: var(--muted); font: 500 12px var(--font); }
+.mod rect { fill: var(--raised); stroke: transparent; stroke-width: 1.5; transition: stroke var(--t-hover) ease; }
+.mod { cursor: pointer; outline: none; }
+.mod:hover rect, .mod:focus-visible rect { stroke: var(--control); }
+.mod .n { fill: var(--text); font: 600 12px var(--font); }
+.mod .l { fill: var(--muted); font: 400 12px var(--font); font-variant-numeric: tabular-nums; }
+.mod.sel rect { stroke: var(--accent); stroke-width: 2; }
+.mod.near rect { stroke: var(--accent); stroke-opacity: .45; }
+.mod.dim { opacity: .25; }
+.mod.added rect { fill: var(--pill-positive-bg); stroke: var(--positive); }
+.mod.removed rect { fill: var(--pill-negative-bg); stroke: var(--negative); stroke-dasharray: 4 3; }
+.mod.changed rect { fill: var(--pill-warning-bg); stroke: var(--warning); }
+.mod .a { fill: var(--positive); } .mod .d { fill: var(--negative); }
+/* the imports ride above the boxes in the one hue, light; the selected module's in full */
+.edges { pointer-events: none; }
+.edge { fill: none; stroke: var(--accent); stroke-opacity: .5; stroke-linecap: round; transition: stroke-opacity var(--t-hover) ease, opacity var(--t-hover) ease; }
+.edge.added { stroke: var(--positive); stroke-opacity: .8; }
+.edge.on { stroke-opacity: 1; }
+.edge.off { opacity: .15; }
+/* the rail: the module read */
+.rail { position: sticky; top: 16px; display: grid; gap: 16px; min-width: 0; }
+.rail h2 { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
+.rail .meta { color: var(--muted); margin-top: 2px; }
+.rail h3 { font-size: var(--fs-small); font-weight: 500; color: var(--muted); margin: 0 0 4px; }
+.rail ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rail li { line-height: 22px; overflow-wrap: anywhere; }
+.rail li .c { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 6px; }
+.rail .linkish { border: 0; background: none; padding: 0; color: var(--text); cursor: pointer; text-align: left; text-underline-offset: 3px; }
+.rail .linkish:hover { text-decoration: underline; }
+.rail .none { color: var(--muted); }
+.rail[hidden] { display: none; }
+.arch .lines p { line-height: 22px; color: var(--muted); }
+.arch .lines p + p { margin-top: 6px; }
+/* the secondary, one folded line each */
+.more { display: grid; gap: 8px; margin-top: 24px; }
+.more .acc-row > summary { grid-template-columns: 12px 160px minmax(0, 1fr); }
+.more .cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; padding: 4px var(--card-pad) 20px; }
+.more .cols3 h3 { font-size: var(--fs-small); font-weight: 500; color: var(--muted); margin: 0 0 6px; }
+.more .cols3 ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 360px; overflow: auto; }
+.more .cols3 li { line-height: 22px; overflow-wrap: anywhere; }
+.more .cols3 li .c { color: var(--muted); }
+.more form { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; padding: 4px var(--card-pad) 20px; }
+.more label { display: grid; gap: 4px; color: var(--muted); font-size: var(--fs-small); }
+.more input { height: var(--control-height); padding: 0 8px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); min-width: 200px; }
+@media (max-width: 1100px) { .arch { grid-template-columns: minmax(0, 1fr); } .rail { position: static; } }
+@media (max-width: 860px) { .more .cols3 { grid-template-columns: minmax(0, 1fr); } .more .acc-row > summary { grid-template-columns: 12px minmax(0, 1fr); padding-top: 10px; padding-bottom: 10px; } .more .acc-row > summary .acc-line { grid-column: 2; } .more input { min-width: 0; width: 100%; } .more label { flex: 1 1 100%; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb">Architecture</b></span><span class="spacer"></span><span class="stamp" id="stamp"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 id="title">Architecture</h1><p class="sub" id="sub" data-i18n="arch.loadingMap"></p></div><label class="delta" id="deltaPick" hidden><select class="control" id="deltaSel" data-i18n-attr="aria-label:arch.deltaAria"></select></label></div>
+      <details class="legend" id="legend" hidden><summary data-i18n="arch.legend"></summary><div class="items" id="legendItems"></div></details>
+      <div class="arch" id="arch">
+        <div class="mapwrap" id="map" role="group" data-i18n-attr="aria-label:arch.mapAria"></div>
+        <aside class="rail" id="rail" aria-live="polite" hidden></aside>
+      </div>
+      <div class="more" id="more"></div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/architecture.js"></script>
+</body>
+</html>

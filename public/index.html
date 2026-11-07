@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<script src="/md.js"></script>
+<script src="/todo.js"></script>
+<script src="/settingintent.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>calmdev</title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* The home (`/`) is the Conversation of the project: public/mainchat.js and mainchat.css. What follows styles the
+   planning thread of one escadrille (`/e/:id`): the thread on the left edge, the composer pinned at the foot of the
+   sheet, a rail of 360px on the right. Grid at 1440: canvas 1440 - 240 - 8 - 48 = 1144 = thread 760 + 24 + rail 360. */
+.chat { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.title-row .back { display: inline-block; margin-bottom: 8px; color: var(--muted); font-size: var(--fs-small); text-decoration: none; } .title-row .back:hover { color: var(--text); } /* « ← Conversation » on a planning thread, as « ← Revue » */
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--gap) 24px; align-items: start; }
+.cols .main { min-width: 0; display: flex; flex-direction: column; }
+.rail { display: grid; gap: var(--gap); position: sticky; top: 16px; min-width: 0; }
+.rail .card { min-width: 0; }
+.thread { flex: 1; display: grid; gap: 20px; align-content: start; }
+/* the facts of the project and of the session: a key-value well, label left, figure right */
+.facts { display: grid; min-width: 0; }
+.facts .kv { display: flex; justify-content: space-between; gap: 12px; min-height: 32px; align-items: center; min-width: 0; }
+.facts .kv + .kv { border-top: 1px solid var(--rule); }
+.facts .k { color: var(--muted); flex: none; } .facts .v { font-weight: 500; text-align: right; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.facts .v.dim { color: var(--faint); font-weight: 400; }
+.facts .v .pill { margin-left: 4px; }
+.card .sub { color: var(--muted); font-size: var(--fs-small); line-height: 16px; min-width: 0; }
+.card .sub.path { word-break: break-all; font-family: var(--mono); }
+.card .lead-figure { font-size: var(--fs-kpi); line-height: 1.15; font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.card .lead-figure small { font-size: 14px; color: var(--muted); margin-left: 4px; }
+.usagebar { height: 6px; border-radius: 3px; background: var(--active); overflow: hidden; }
+.usagebar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.msg { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; }
+.msg .who { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; font-weight: 600; background: var(--raised); }
+.msg.user .who { background: var(--primary); color: var(--primary-ink); }
+.msg.claude .who { background: var(--accent-tint); color: var(--accent); }
+.msg .body { min-width: 0; padding-top: 7px; }
+.msg .meta { color: var(--faint); font-size: var(--fs-small); margin-bottom: 4px; }
+.msg .text { line-height: 22px; overflow-wrap: anywhere; } /* the line breaks are <br> already; pre-wrap let trailing spaces hang past the margin on a phone */
+.msg .text p { margin: 0 0 10px; } .msg .text p:last-child { margin: 0; }
+.msg .text h1, .msg .text h2, .msg .text h3 { font-size: var(--fs-section); font-weight: 600; margin: 14px 0 6px; line-height: 22px; }
+.msg .text ul, .msg .text ol { margin: 0 0 10px; padding-left: 22px; } .msg .text li { margin: 2px 0; }
+.msg .text code { background: var(--raised); padding: 1px 5px; border-radius: 4px; }
+.msg .text pre { margin: 0 0 10px; padding: 10px 12px; background: var(--raised); border-radius: var(--radius-control); overflow: auto; white-space: pre; } .msg .text pre code { background: none; padding: 0; }
+.msg .text strong { font-weight: 600; }
+.msg.error .text { color: var(--pill-negative-ink); background: var(--pill-negative-bg); padding: 8px 12px; border-radius: var(--radius-control); }
+/* what the session is doing, said in one quiet line that replaces itself */
+.activity { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.activity .who { width: 36px; display: grid; place-items: center; height: 18px; }
+.activity .who i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: block; }
+.activity .who i.off { background: var(--control); }
+.activity > div { display: grid; min-width: 0; gap: 2px; }
+.activity .lines { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+.activity details { min-width: 0; } .activity summary { display: inline-flex; } .activity ol li { overflow-wrap: anywhere; }
+.activity ol { margin: 4px 0 0; padding-left: 18px; font-family: var(--mono); }
+/* the lead: what the session waits for, read first */
+.lead { border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--card-pad); display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 12px; align-items: start; margin-bottom: 4px; }
+.lead .badge { width: 40px; height: 40px; border-radius: 8px; background: var(--pill-wait-bg); color: var(--pill-wait-ink); display: grid; place-items: center; font-weight: 600; }
+.lead.calm .badge { background: var(--raised); color: var(--muted); }
+.lead.done .badge { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+.lead .what { font-weight: 600; font-size: var(--fs-section); line-height: 22px; }
+.lead .how { margin-top: 4px; color: var(--muted); line-height: 20px; }
+.lead .how b { color: var(--text); font-weight: 500; }
+.lead .act { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 860px) { .lead { grid-template-columns: 40px minmax(0, 1fr); } .lead .act { grid-column: 1 / -1; justify-content: flex-start; } }
+/* the questions: a form, the recommendation already chosen, a text only where the developer thinks otherwise */
+.questions { display: grid; }
+.q { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; padding: 14px 0; }
+.q + .q { border-top: 1px solid var(--rule); }
+.q .badge { width: 36px; height: 36px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; font-weight: 600; }
+.q .title { font-weight: 600; font-size: var(--fs-section); line-height: 22px; }
+.q .ask { margin-top: 2px; line-height: 20px; }
+.q .reco { margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-control); background: var(--raised); line-height: 20px; }
+.q .reco b { font-weight: 600; }
+.q .reco .why { color: var(--muted); display: block; margin-top: 2px; }
+.q .choice { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+.q .choice label { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
+.q .choice input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.q textarea.other { width: 100%; min-height: 56px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--text); resize: vertical; line-height: 20px; }
+.q textarea.other[hidden] { display: none; }
+.card .foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+.card .foot .tally { color: var(--muted); flex: 1; min-width: 0; }
+.asked { color: var(--muted); font-size: var(--fs-small); }
+/* who you talk to: the schema */
+.schema { display: block; width: 100%; height: auto; margin: 4px 0 0; }
+.schema text { font: 500 11px var(--font); fill: var(--text); }
+.schema text.m { fill: var(--muted); font-weight: 400; font-size: 11px; }
+.schema .box { fill: var(--raised); stroke: var(--border); }
+.schema .you { fill: var(--primary); } .schema .you + text { fill: var(--primary-ink); }
+.schema .me { fill: var(--accent-tint); stroke: var(--accent); }
+.schema .later { fill: none; stroke: var(--control); stroke-dasharray: 3 3; }
+.schema .edge { stroke: var(--control); fill: none; }
+.schema .edge.on { stroke: var(--accent); }
+/* a card; a folded card is one line (what, the one action, « voir ») and its list on demand */
+.card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--card-pad); display: grid; gap: 12px; }
+.card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.card h2 { font-size: var(--fs-section); font-weight: 600; }
+.card.fold { padding: 12px var(--card-pad); gap: 0; }
+.card.fold .line { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; min-height: 24px; }
+.card.fold .line h2 { font-size: var(--fs-body); font-weight: 500; color: var(--muted); flex: 1; min-width: 0; }
+.card.fold .line h2 b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.card.fold .line .card-link { color: var(--muted); }
+.card.fold.who > summary { font-size: var(--fs-body); min-height: 24px; }
+.card.fold.who[open] { gap: 12px; padding-bottom: var(--card-pad); } .card.fold.who[open] > summary { color: var(--text); }
+.card.fold .install { margin-top: 8px; border-top: 1px solid var(--rule); }
+/* the install list: a checkable list, the why in grey under the name, the how folded */
+.install { display: grid; } .install[hidden] { display: none; }
+.install .item { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 12px; padding: 10px 0; align-items: start; }
+.install .item + .item { border-top: 1px solid var(--rule); }
+.install .item label { display: contents; cursor: pointer; }
+.install input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
+.install .name { font-weight: 500; }
+.install .why { grid-column: 2; color: var(--muted); } .install details { grid-column: 2; margin-top: 2px; } .install code { display: block; margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raised); padding: 6px 8px; border-radius: var(--radius-control); }
+.estline { display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: baseline; font-variant-numeric: tabular-nums; color: var(--muted); }
+.estline b { color: var(--text); font-weight: 600; font-size: var(--fs-section); }
+/* the plan card: the formation at a glance, one row per session, the waves as groups */
+.formation { display: grid; gap: 4px; }
+.formation .wave { color: var(--muted); font-size: var(--fs-small); padding: 10px 0 2px; }
+.formation .row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 40px; padding: 4px 0; }
+.formation .row + .row { border-top: 1px solid var(--rule); }
+.formation .badge { width: 36px; height: 36px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; font-weight: 600; }
+.formation .name { font-weight: 500; } .formation .where { color: var(--muted); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.formation .stops { color: var(--muted); font-size: var(--fs-small); white-space: nowrap; }
+.card .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* the composer */
+.composer { position: sticky; bottom: 0; margin-top: 24px; padding: 16px 0 0; background: var(--surface); }
+.composer .box { border: 1px solid var(--control); border-radius: var(--radius-card); background: var(--surface); display: grid; }
+.composer .box:focus-within { border-color: var(--accent); }
+.composer textarea { width: 100%; min-height: 72px; max-height: 320px; padding: 12px 14px 4px; border: 0; background: none; resize: none; line-height: 22px; display: block; }
+.composer textarea:focus { outline: 0; }
+.composer textarea::placeholder { color: var(--faint); }
+.composer .interim { padding: 0 14px; color: var(--muted); min-height: 0; line-height: 20px; font-style: normal; }
+.composer .bar { display: flex; align-items: center; gap: 8px; padding: 8px; flex-wrap: wrap; }
+.composer .bar .state { flex: 1; color: var(--muted); font-size: var(--fs-small); padding-left: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mic { position: relative; }
+.mic[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.mic svg { width: 16px; height: 16px; }
+.hintline { color: var(--faint); font-size: var(--fs-small); margin-top: 8px; }
+@media (max-width: 1100px) { .cols { grid-template-columns: minmax(0, 1fr); } .rail { position: static; } }
+@media (max-width: 860px) { .canvas { padding: 16px; } .msg .text pre { white-space: pre-wrap; overflow-wrap: anywhere; } .composer { margin-top: 16px; } .title-row h1 { font-size: 20px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" aria-label="Menu" aria-expanded="false">Menu</button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb">Conversation</b></span><span class="spacer"></span><span class="stamp" id="stamp"></span></div>
+    <main class="sheet"><div class="canvas chat" id="canvas"></div></main>
+  </div>
+</div>
+<script src="/speech.js"></script>
+<script src="/suggest.js"></script>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/access.js"></script>
+<script src="/measure.js"></script>
+<script src="/burst.js"></script>
+<script src="/team.js"></script>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : T.time(d); };
+const api = (p, body) => fetch(p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined).then((r) => r.json());
+const fmt = (n) => T.num(Number(n || 0));
+const NB = '\u202f';
+const fmtTokens = (n) => { if (!Number.isFinite(n)) return '–'; if (n >= 1e6) return T.num(n / 1e6, { maximumFractionDigits: 1 }) + NB + 'M'; if (n >= 1e3) return T.num(Math.round(n / 1e3)) + NB + 'k'; return T.num(Math.round(n)); };
+const fmtCost = (c) => Number.isFinite(c) ? T.usd(c, c < 10 ? 2 : 0) : '–';
+// The plan's total in one line, when the server has estimated it
+const estimateLine = (est) => { if (!est || !est.total) return ''; const t = est.total; const cal = est.calibration && est.calibration.calibrated; return `<p class="estline"><span><b>≈ ${fmtTokens(t.tokens)}</b> ${esc(T('esc.tokens'))}</span><span>${fmtCost(t.cost)}</span>${cal ? `<span>${esc(T('esc.weeklyMove', { a: pct(t.weeklyNow), b: pct(t.weeklyAfter) }))}</span>` : `<span>${esc(T('esc.weeklyNone'))}</span>`}</p>`; };
+const pct = (x) => T.num(x * 100, { maximumFractionDigits: x < 0.1 ? 1 : 0 }) + ' %';
+let MODEL_NAMES = {}; // filled from GET /api/models before the first render
+const loadModelNames = () => api('/api/models').then((r) => { MODEL_NAMES = Object.fromEntries((r.models || []).map((m) => [m.id, m.name])); }).catch(() => {});
+const STATUS = new Proxy({}, { get: (o, k) => (['thinking', 'waiting', 'planned', 'stopped', 'error'].includes(k) ? T('esc.st.' + k) : undefined) });
+
+// A small markdown for what the session writes: paragraphs, lists, headings, bold, code. Nothing else.
+const md = window.escadrilleMd; // public/md.js: paragraphs, lists, tables, code
+
+let escId = location.pathname.startsWith('/e/') ? decodeURIComponent(location.pathname.slice(3)) : null;
+let data = null; let meta = null; let es = null; let seen = null;
+const canvas = document.getElementById('canvas');
+
+// The home is the Conversation (public/mainchat.js): the old « Nouvelle escadrille » form left in phase 9; a planning
+// starts from the Conversation's composer (pilot off), its thread is /e/:id, drawn below.
+
+// The formation: the plan's sessions by wave, one row each
+const formation = (p, short) => `<div class="formation">${p.waves.map((w) => `<div class="wave">${esc(w.title)}${w.text ? ' · ' + esc(w.text) : ''}</div>${p.sessions.filter((s) => s.wave === w.n).map((s) => `<div class="row"><div class="badge">${esc(s.id)}</div><div style="min-width:0"><div class="name">${esc(s.name)}</div>${((w) => w ? `<div class="where">${esc(w)}</div>` : '')([short && s.path === p.project ? '' : (s.where || s.path), s.after && s.after.length ? T('esc.after', { list: s.after.join(', ') }) : ''].filter(Boolean).join(' · '))}</div><div class="stops"><span class="pill">${esc(MODEL_NAMES[s.model] || s.model || '')}</span> ${esc(T('esc.stops', { n: s.stops.length }))}</div></div>`).join('')}`).join('')}</div>`;
+// The project as the planning session will find it: what it reads before asking anything
+let facts = null;
+const factsCard = (f) => { if (!f) return `<section class="card" aria-labelledby="facts-h"><header><h2 id="facts-h">${esc(T('esc.project'))}</h2></header><p class="sub">${esc(T('esc.pickFolder'))}</p></section>`;
+  if (f.error) return `<section class="card" aria-labelledby="facts-h"><header><h2 id="facts-h">${esc(T('esc.project'))}</h2></header><p class="sub" title="${esc(f.error)}">${esc(T('esc.unread'))}</p></section>`;
+  const kv = (k, v, dim) => `<div class="kv"><span class="k">${k}</span><span class="v ${dim ? 'dim' : ''}">${v}</span></div>`;
+  const brief = [f.git ? esc(f.branch || 'git') : esc(T('access.noGit')), f.git ? esc(T('access.commits', { n: f.commits || 0 })) : '', f.docs.length ? esc(f.docs.join(', ')) : esc(T('esc.noGuidance')), f.memories ? esc(T('access.notes', { n: f.memories })) : '', f.skills.length ? esc(T('esc.skills', { n: f.skills.length })) : ''].filter(Boolean).join(' · ');
+  return `<section class="card" aria-labelledby="facts-h"><header><h2 id="facts-h">${esc(f.name)}</h2><span class="stamp">${f.git && f.lastWhen ? esc(f.lastWhen) : ''}</span></header><p class="sub">${brief}</p><details><summary>${esc(T('esc.detail'))}</summary><p class="sub path" style="margin-top:8px">${esc(f.path)}</p><div class="facts">
+    ${f.git ? kv(T('access.branch'), esc(f.branch || '–')) + kv(T('esc.lastCommit'), `<span title="${esc(f.lastCommit)}">${esc(f.lastWhen || '–')}</span>`) + kv(T('esc.commits'), fmt(f.commits)) + kv(T('esc.changed'), f.changed ? fmt(f.changed) : '0', !f.changed) : ''}
+    ${kv(T('access.guidance'), f.docs.length ? f.docs.map(esc).join(', ') : esc(T('access.none')), !f.docs.length)}
+    ${kv(T('access.memory'), esc(f.memories ? T('access.notes', { n: f.memories }) : T('access.empty')), !f.memories)}
+    ${kv(T('access.skills'), f.skills.length ? `<span title="${esc(f.skills.join(', '))}">${f.skills.length > 3 ? fmt(f.skills.length) : esc(f.skills.join(', '))}</span>` : esc(T('access.none')), !f.skills.length)}
+    ${f.pkg ? kv(T('access.deps'), fmt(f.pkg.deps)) : ''}
+  </div><p class="sub">${esc(T('esc.readsFirst'))}</p></details></section>`; };
+// The Rafale view (burst.js, /#rafale) redraws itself; the measure and « À relire » left the home (direction.md §3: the
+// status panel and « Ce qui t'attend » carry them)
+if (window.escadrilleBurst) escadrilleBurst.onRender(() => { if (!escId && escadrilleBurst.is()) render(); });
+// Équipe (docs/team.md): the screen redraws when its data lands; the settings block of Accès too (it reads the same data)
+if (window.escadrilleTeam) escadrilleTeam.onRender(() => { if (escId) return; if (escadrilleTeam.is()) render(); else if (isAccess() && access) render(); });
+const railHtml = () => (escId && data ? sessionCard() + factsCard(facts) : '');
+const loadFacts = async (p) => { if (!p) { facts = null; } else { facts = await fetch('/api/project?path=' + encodeURIComponent(p)).then((r) => r.json()).catch((e) => ({ error: e.message })); } const rail = document.getElementById('rail'); if (rail) rail.innerHTML = railHtml(); };
+
+const composer = (placeholder, label) => `<div class="composer"><div class="box"><textarea id="text" name="text" rows="3" placeholder="${esc(placeholder)}" aria-label="${esc(T('main.msgAria'))}"></textarea><div class="interim" id="interim" aria-live="polite"></div><div class="bar"><button type="button" class="btn mic" id="mic" aria-pressed="false" aria-label="${esc(T('main.dictate'))}"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5"/></svg><span id="micLabel">${esc(T('main.dictate'))}</span></button><span class="state" id="state"></span><button type="submit" class="btn primary" id="send">${esc(label)}</button></div></div><p class="hintline keys"><kbd>${esc(T('main.enter'))}</kbd> ${esc(T('main.sends'))} · <kbd>${esc(T('esc.shift'))}</kbd> <kbd>${esc(T('main.enter'))}</kbd> ${esc(T('esc.shiftEnter'))}</p></div>`;
+
+// ---- the chat of one escadrille
+const chatView = () => { const e = data.escadrille; const ms = data.messages; const u = e.usage;
+  // The thread: one message per block, the tool calls of one turn folded into one activity line
+  let html = ''; let acts = [];
+  const flushActs = (live) => { if (!acts.length) return; const last = acts[acts.length - 1]; html += `<div class="activity"><div class="who"><i class="${live ? '' : 'off'}" aria-hidden="true"></i></div><div><span class="lines">${esc(last.text)}</span>${acts.length > 1 ? `<details><summary>${acts.length} lectures</summary><ol>${acts.map((a) => `<li>${esc(a.text)}</li>`).join('')}</ol></details>` : ''}</div></div>`; acts = []; };
+  ms.forEach((m, i) => { if (m.role === 'activity') { acts.push(m); return; } flushActs(false);
+    if (m.role === 'user') html += `<div class="msg user"><div class="who" aria-hidden="true">${esc(T('esc.you'))}</div><div class="body"><div class="meta">${esc(T('esc.you'))} · ${when(m.at)}</div><div class="text">${md(m.text)}</div></div></div>`;
+    else if (m.role === 'claude') { const q = questionsOf(); const folded = q && q.prose && q.seq === m.seq; const intro = folded ? m.text.split(/\n\s*(?:\*\*[^*]+\*\*\s*\n|1[.)]\s)/)[0].trim() : m.text;
+      html += `<div class="msg claude" id="m-${m.seq}"><div class="who" aria-hidden="true">C</div><div class="body"><div class="meta">${esc(MODEL_NAMES[e.model] || e.model)} · ${when(m.at)}</div><div class="text">${md(intro)}</div>${folded ? `<details class="asked"><summary>${esc(T('esc.fullMessage'))}</summary><div class="text" style="margin-top:8px">${md(m.text)}</div></details>` : ''}</div></div>`; if (folded) html += questionsCard(q); }
+    else if (m.role === 'questions') { const q = questionsOf(); html += q && q.seq === m.seq ? questionsCard(q) : `<details class="asked"><summary>${esc(T('esc.askedAt', { what: m.text, t: when(m.at) }))}</summary><ol>${m.data.items.map((x) => `<li>${esc(x.title)}</li>`).join('')}</ol></details>`; }
+    else if (m.role === 'error') html += `<div class="msg error"><div class="who" aria-hidden="true">!</div><div class="body"><div class="meta">${when(m.at)}</div><div class="text">${esc(m.text)}</div></div></div>`;
+    else if (m.role === 'install' && ms.slice(i + 1).some((x) => x.role === 'install')) { /* an older list, replaced by the one below */ }
+    else if (m.role === 'install') { const items = (e.install || m.data.items); const kept = items.filter((x) => x.checked).length; const n = items.length;
+      const line = kept === n ? T('esc.installProposed', { n }) : T('esc.installKept', { n: kept, total: n });
+      html += `<section class="card fold" aria-labelledby="inst-h"><div class="line"><h2 id="inst-h">${line}</h2>${kept < n ? `<button type="button" class="card-link" data-install-all>${esc(T('esc.acceptAll'))}</button>` : ''}<button type="button" class="card-link" data-install-toggle aria-expanded="${installOpen}" aria-controls="install">${esc(T(installOpen ? 'esc.fold' : 'esc.see'))}</button></div><div class="install" id="install" ${installOpen ? '' : 'hidden'}>${items.map((it, k) => `<div class="item"><label><input type="checkbox" data-k="${k}" ${it.checked ? 'checked' : ''}><span class="name">${esc(it.name)}</span></label><span class="why">${esc(it.why)}</span>${it.how ? `<details><summary>${esc(T('esc.how'))}</summary><code>${esc(it.how)}</code></details>` : ''}</div>`).join('')}<p class="stamp" style="padding-top:8px">${esc(T('esc.keptNote'))}</p></div></section>`; }
+    else if (m.role === 'plan' && data.plan && m.data.id === data.plan.id && !ms.slice(i + 1).some((x) => x.role === 'plan')) { const p = data.plan; html += `<section class="card" aria-labelledby="plan-h"><header><h2 id="plan-h">${esc(T('esc.planTitle', { title: p.title }))}</h2><span class="stamp">${esc(T('esc.sessionsWaves', { sessions: T('main.sessionsN', { n: p.sessions.length }), waves: T('esc.waves', { n: p.waves.length }) }))}</span></header>${p.goal ? `<p>${esc(p.goal)}</p>` : ''}${formation(p)}${estimateLine(data.estimate || p.estimate)}<div class="actions"><a class="btn primary" href="/plan/${encodeURIComponent(p.id)}#flow">${esc(T('esc.openPlan'))}</a><span class="stamp">${esc(T('esc.planFile', { id: p.id }))}</span></div></section>`; }
+    else if (m.role === 'plan') html += `<div class="msg claude"><div class="who" aria-hidden="true">C</div><div class="body"><div class="meta">${when(m.at)}</div><div class="text">${esc(T('esc.planReplaced', { t: m.text }))}</div></div></div>`;
+  });
+  flushActs(e.status === 'thinking');
+  if (e.status === 'thinking' && !acts.length) html += `<div class="activity"><div class="who"><i aria-hidden="true"></i></div><div><span class="lines">${esc(T(e.live ? 'esc.thinking' : 'esc.starting'))}</span></div></div>`;
+  const state = e.status === 'thinking' ? T('esc.stateThinking') : e.status === 'error' ? T('esc.stateError') : e.status === 'stopped' ? T('esc.stateStopped') : '';
+  return `<div class="title-row"><div style="min-width:0"><a class="back" href="${esc(P.withProject('/', e.project))}">← Conversation</a><h1>${esc(e.title)}</h1><p class="sub">${esc(e.project.split('/').pop())} · ${esc(MODEL_NAMES[e.model] || e.model)} · <b>${esc(STATUS[e.status] || e.status)}</b></p></div>${!e.plan_id && ['thinking', 'waiting', 'error'].includes(e.status) ? `<button type="button" class="btn ghost" data-abandon-esc="${esc(e.id)}">${esc(T('main.abandon'))}</button>` : ''}</div><div class="cols"><form id="chat" class="main">${lead()}<div class="thread" id="thread">${html}</div>${composer(T(e.plan_id ? 'esc.phPlan' : e.status === 'thinking' ? 'esc.phThinking' : 'esc.phAnswer'), T('esc.send'))}</form><aside class="rail" id="rail">${railHtml()}</aside></div><p hidden id="stateText">${esc(state)}</p>`; };
+
+// The questions on the table: the last escadrille:questions block since the developer's last message,
+// or, when the session wrote them in prose, the numbered list of its last message.
+const parseProse = (text) => { const items = []; let cur = null;
+  for (const raw of String(text).split('\n')) { const m = raw.match(/^\s*(\d+)[.)]\s+(.*)$/); if (m) { cur = { n: Number(m[1]), body: m[2] }; items.push(cur); continue; } if (cur && raw.trim() && !/^#|^\*\*[^*]+\*\*$/.test(raw.trim())) cur.body += ' ' + raw.trim(); else if (!raw.trim()) cur = null; }
+  return items.map((it) => { let body = it.body; let title = ''; const t = body.match(/^\*\*([^*]+)\*\*\s*/); if (t) { title = t[1].replace(/[.:]\s*$/, ''); body = body.slice(t[0].length); }
+    let recommendation = ''; let why = ''; const r = body.match(/\(\s*Je recommande\s*:?\s*([\s\S]*?)\)\s*$/i) || body.match(/Je recommande\s*:?\s*([\s\S]*)$/i);
+    if (r) { recommendation = r[1].trim(); body = body.slice(0, r.index).trim(); }
+    return { n: it.n, title: title || body.slice(0, 60), question: title ? body : '', recommendation, why }; }).filter((q) => q.recommendation || q.question); };
+const questionsOf = () => { const ms = data.messages; let lastUser = -1; ms.forEach((m, i) => { if (m.role === 'user') lastUser = i; });
+  const after = ms.slice(lastUser + 1); const q = [...after].reverse().find((m) => m.role === 'questions'); if (q) return { items: q.data.items, seq: q.seq };
+  const c = [...after].reverse().find((m) => m.role === 'claude'); if (c) { const items = parseProse(c.text); if (items.length >= 2) return { items, seq: c.seq, prose: true }; } return null; };
+let answers = {}; // n -> { other: bool, text }
+let installOpen = false; // the install list unfolded
+const questionsCard = ({ items, prose }) => `<section class="card" id="questions" aria-labelledby="q-h"><header><h2 id="q-h">${esc(T('esc.questions'))}</h2></header><div class="questions">${items.map((q) => { const a = answers[q.n] || {}; return `<div class="q" data-n="${q.n}"><div class="badge">${q.n}</div><div style="min-width:0"><div class="title">${esc(q.title)}</div>${q.question ? `<div class="ask">${md(q.question)}</div>` : ''}${q.recommendation ? `<div class="reco"><b>${esc(T('esc.recommended'))}</b> ${md(q.recommendation)}${q.why ? `<span class="why">${esc(q.why)}</span>` : ''}</div>` : ''}<div class="choice"><label><input type="radio" name="q${q.n}" value="follow" ${a.other ? '' : 'checked'}>${esc(T('esc.follow'))}</label><label><input type="radio" name="q${q.n}" value="other" ${a.other ? 'checked' : ''}>${esc(T('esc.otherwise'))}</label></div><textarea class="other"  placeholder="${esc(T('esc.otherPh'))}" ${a.other ? '' : 'hidden'}>${esc(a.text || '')}</textarea></div></div>`; }).join('')}</div><div class="foot"><span class="tally" id="tally"></span><button type="button" class="btn" id="answerAll">${esc(T('esc.acceptWrite'))}</button></div>${prose ? `<p class="asked">${esc(T('esc.prose'))}</p>` : ''}</section>`;
+const tally = () => { const el = document.getElementById('tally'); const btn = document.getElementById('answerAll'); if (!el || !btn) return; const q = questionsOf(); if (!q) return; const others = q.items.filter((x) => answers[x.n] && answers[x.n].other); const empty = others.filter((x) => !(answers[x.n].text || '').trim());
+  el.textContent = others.length ? T('esc.tally', { follow: q.items.length - others.length, others: others.length }) + (empty.length ? ' ' + T('esc.toWrite', { n: empty.length }) : '') : T('esc.tallyAll', { n: q.items.length });
+  btn.textContent = T(others.length ? 'esc.sendWrite' : 'esc.acceptWrite'); btn.disabled = empty.length > 0; };
+// The reply the developer would have typed, written for them
+const composeAnswer = () => { const q = questionsOf(); const e = data.escadrille; const lines = [];
+  if (q) { const others = q.items.filter((x) => answers[x.n] && answers[x.n].other && (answers[x.n].text || '').trim()); lines.push(others.length ? `${T('esc.okExcept')}\n${others.map((x) => `${x.n}. ${x.title}: ${answers[x.n].text.trim()}`).join('\n')}` : T('esc.okAll')); }
+  if (e.install && e.install.length) { const kept = e.install.filter((x) => x.checked).map((x) => x.name); const dropped = e.install.filter((x) => !x.checked).map((x) => x.name); lines.push(T('esc.toInstall', { kept: kept.length ? kept.join(', ') : T('esc.nothing'), dropped: dropped.length ? T('esc.dropping', { list: dropped.join(', ') }) : '' })); }
+  lines.push(T('esc.writePlan')); return lines.join('\n\n'); };
+const sendText = async (text) => { const r = await api('/api/escadrille/' + encodeURIComponent(escId) + '/message', { text }); if (r.error) { document.getElementById('state').textContent = r.error; return false; } answers = {}; await load(); return true; };
+
+// Who the developer talks to, drawn: them, this chat, the planning session in the project, the plan, the sessions the tool will launch
+const schema = (e) => { const proj = e.project.split('/').pop(); const planned = data.plan ? data.plan.sessions.slice(0, 3).map((s) => s.id) : ['A', 'B', 'C']; const has = !!data.plan;
+  return `<svg class="schema" viewBox="0 0 336 150" role="img" aria-label="${esc(T('esc.schemaAria', { proj }))}">
+    <rect class="you" x="0" y="8" width="44" height="30" rx="6"/><text x="22" y="27" text-anchor="middle">${esc(T('esc.you'))}</text>
+    <path class="edge on" d="M44 23 H70"/><polygon points="66,19 72,23 66,27" fill="var(--accent)"/>
+    <rect class="box" x="72" y="8" width="70" height="30" rx="6"/><text x="107" y="27" text-anchor="middle">${esc(T('esc.thisChat'))}</text>
+    <path class="edge on" d="M142 23 H168"/><polygon points="164,19 170,23 164,27" fill="var(--accent)"/>
+    <rect class="me" x="170" y="2" width="166" height="42" rx="6"/><text x="253" y="20" text-anchor="middle">${esc(T('esc.planningSession'))}</text><text class="m" x="253" y="36" text-anchor="middle">${esc(T('esc.readOnlyIn', { p: proj.slice(0, 16) }))}</text>
+    <path class="edge ${has ? 'on' : ''}" d="M253 44 V66"/><polygon points="249,62 253,68 257,62" fill="${has ? 'var(--accent)' : 'var(--control)'}"/>
+    <rect class="${has ? 'me' : 'later'}" x="203" y="68" width="100" height="26" rx="6"/><text x="253" y="85" text-anchor="middle">${esc(T(has ? 'esc.thePlan' : 'esc.planLater'))}</text>
+    <path class="edge" d="M253 94 V104 H${72 + 28} V112 M253 104 V112 M253 104 H${72 + 28 + 2 * 88} V112"/>
+    ${planned.map((id, i) => `<rect class="later" x="${72 + i * 88}" y="112" width="56" height="26" rx="6"/><text class="m" x="${100 + i * 88}" y="129" text-anchor="middle">${esc(id)}</text>`).join('')}
+    <text class="m" x="0" y="148">${esc(T('esc.workSessions'))}</text>
+  </svg>`; };
+
+// Being told: a browser notification when the session answers while the tab is not in front, a mark in the title
+const notifyKey = 'escadrille.notify';
+const notifyBtn = () => { if (!('Notification' in window)) return ''; const on = Notification.permission === 'granted' && localStorage.getItem(notifyKey) === '1'; return `<button type="button" class="btn wide" id="notify" aria-pressed="${on}">${esc(T(on ? 'esc.notified' : 'esc.notifyMe'))}</button>`; };
+let lastSeen = null;
+const maybeNotify = () => { const e = data.escadrille; const ms = data.messages; const last = [...ms].reverse().find((m) => ['claude', 'questions', 'plan', 'error'].includes(m.role)); const key = last ? last.seq : 0;
+  if (lastSeen !== null && key !== lastSeen && document.hidden && Notification.permission === 'granted' && localStorage.getItem(notifyKey) === '1') { const n = new Notification(e.title, { body: last.role === 'plan' ? T('esc.notifPlan') : last.role === 'questions' ? T('esc.notifQuestions', { n: last.data.items.length }) : last.role === 'error' ? T('esc.notifError') : T('esc.notifAnswered') }); n.onclick = () => { window.focus(); n.close(); }; }
+  lastSeen = key; };
+
+// What the session waits for, said first: the questions to answer, the plan to open, or nothing yet
+const lead = () => { const e = data.escadrille; const ms = data.messages; const lastC = [...ms].reverse().find((m) => m.role === 'claude');
+  if (e.status === 'thinking') return `<section class="lead calm" aria-labelledby="lead-h"><div class="badge" aria-hidden="true">…</div><div><h2 class="what" id="lead-h">${esc(T('esc.leadIdle'))}</h2><p class="how">${esc(T('esc.leadIdleHow'))}</p></div></section>`;
+  if (e.plan_id && lastC && !ms.slice(ms.indexOf(lastC)).some((m) => m.role === 'plan') && !questionsOf()) return `<section class="lead done" aria-labelledby="lead-h"><div class="badge" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg></div><div><h2 class="what" id="lead-h">${esc(T('esc.leadPlan'))}</h2><p class="how">${esc(T('esc.leadPlanHow'))}</p></div><div class="act"><a class="btn primary" href="/plan/${encodeURIComponent(e.plan_id)}">${esc(T('esc.openPlan'))}</a></div></section>`;
+  if (e.plan_id) return `<section class="lead done" aria-labelledby="lead-h"><div class="badge" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg></div><div><h2 class="what" id="lead-h">${esc(T('esc.leadPlan'))}</h2><p class="how">${esc(T('esc.leadPlanHowShort'))}</p></div><div class="act"><a class="btn primary" href="/plan/${encodeURIComponent(e.plan_id)}">${esc(T('esc.openPlan'))}</a></div></section>`;
+  if (e.status === 'error') return `<section class="lead" aria-labelledby="lead-h"><div class="badge" aria-hidden="true">!</div><div><h2 class="what" id="lead-h">${esc(T('esc.leadError'))}</h2><p class="how">${esc(T('esc.leadErrorHow'))}</p></div><div class="act"><button type="button" class="btn primary" data-focus>${esc(T('esc.write'))}</button></div></section>`;
+  const q = questionsOf();
+  if (q) return `<section class="lead" aria-labelledby="lead-h"><div class="badge" aria-hidden="true">${q.items.length}</div><div><h2 class="what" id="lead-h">${esc(T('esc.leadQuestions', { n: q.items.length }))}</h2><p class="how">${T('esc.leadQuestionsHow')}</p></div><div class="act"><button type="button" class="btn primary" data-accept>${esc(T('esc.acceptWrite'))}</button></div></section>`;
+  return `<section class="lead" aria-labelledby="lead-h"><div class="badge" aria-hidden="true">?</div><div><h2 class="what" id="lead-h">${esc(T('esc.leadWait'))}</h2><p class="how">${esc(T('esc.leadWaitHow'))}</p></div><div class="act"><button type="button" class="btn primary" data-focus>${esc(T('esc.reply'))}</button></div></section>`; };
+
+// The planning session itself: its usage, read from Claude Code at the end of each turn
+const sessionCard = () => { const e = data.escadrille; const u = e.usage; const kv = (k, v, dim) => `<div class="kv"><span class="k">${k}</span><span class="v ${dim ? 'dim' : ''}">${v}</span></div>`;
+  const ctx = u && u.contextWindow ? u.lastInput / u.contextWindow : null;
+  return `<details class="card fold who"><summary><span id="who-h">${esc(T('esc.whoTalk'))}</span></summary><p>${T('esc.whoText', { p: esc(e.project.split('/').pop()) })}</p>${schema(e)}${notifyBtn()}</details>
+  <section class="card" aria-labelledby="sess-h"><header><h2 id="sess-h">${esc(T('esc.planningCard'))}</h2><span class="pill ${e.status === 'waiting' ? 'wait' : e.status === 'planned' ? 'pos' : e.status === 'error' ? 'neg' : ''}">${esc(STATUS[e.status] || e.status)}</span></header>
+    ${u && u.input + u.output > 0 ? `<div><div class="lead-figure">${fmt(u.input + u.output)}<small>${esc(T('esc.tokens'))}</small></div><p class="sub">${esc(T('esc.readWritten', { in: fmt(u.input), out: fmt(u.output), n: u.turns }))}</p></div>` : `<div class="facts">${kv(T('esc.tokensK'), '—', true)}</div>`}
+    ${ctx !== null ? `<div><div class="facts">${kv(T('esc.context'), pct(ctx))}</div><div class="usagebar" aria-hidden="true"><i style="width:${Math.max(1, Math.min(100, ctx * 100))}%"></i></div></div>` : ''}
+    <div class="facts">${kv(T('esc.model'), esc(MODEL_NAMES[e.model] || e.model))}${kv(T('esc.weekly'), typeof e.weekly === 'number' ? pct(e.weekly) : '–', typeof e.weekly !== 'number')}${kv(T('esc.cost'), u && u.cost ? T.usd(u.cost, 2) : '–', !(u && u.cost))}${kv(T('esc.ccSession'), e.session_id ? `<code title="${esc(e.session_id)}">${esc(e.session_id.slice(0, 8))}</code>` : '–', !e.session_id)}</div>
+    ${e.install ? `<div class="facts">${kv(T('esc.install'), esc(T('esc.ticked', { a: e.install.filter((x) => x.checked).length, b: e.install.length })))}</div>` : ''}
+    ${e.plan_id ? `<a class="btn wide" href="/plan/${encodeURIComponent(e.plan_id)}">${esc(T('esc.openPlan'))}</a>` : ''}
+  </section>`; };
+
+const render = () => { const sb = document.getElementById('sidebar').classList.contains('open');
+  if (!escId && window.escadrilleMain && window.escadrilleMain.is()) { document.title = window.escadrilleMain.title(); document.getElementById('crumb').textContent = 'Conversation'; canvas.innerHTML = window.escadrilleMain.view(); } else // the main conversation (public/mainchat.js, docs/mainchat.md)
+  if (!escId && window.escadrilleBurst && escadrilleBurst.is()) { document.title = T('page.burst', { name: P.name(project) }); document.getElementById('crumb').textContent = T('nav.burst'); canvas.innerHTML = escadrilleBurst.view(); } else
+  if (!escId && window.escadrilleTeam && escadrilleTeam.is()) { document.title = T('page.team', { name: P.name(project) }); document.getElementById('crumb').textContent = T('nav.team'); canvas.innerHTML = escadrilleTeam.view(); } else
+  if (!escId && isAccess()) { document.title = T('page.access', { name: P.name(project) }); document.getElementById('crumb').textContent = T('nav.access'); canvas.innerHTML = accessView(); }
+  else if (!escId && isMemory()) { document.title = T('page.memory', { name: P.name(project) }); document.getElementById('crumb').textContent = T('nav.memory'); canvas.innerHTML = memoryView(); }
+  else if (!escId) { document.title = project ? 'Conversation · ' + P.name(project) : 'calmdev'; document.getElementById('crumb').textContent = 'Conversation'; canvas.innerHTML = window.escadrilleMain ? window.escadrilleMain.view() : ''; } // an unknown anchor lands on the Conversation
+  else if (data) { const e = data.escadrille; document.title = (questionsOf() || e.status === 'waiting' ? '● ' : '') + e.title; document.getElementById('crumb').textContent = 'Conversation / ' + e.title; const keep = document.getElementById('text'); const val = keep ? keep.value : ''; const focused = keep && document.activeElement === keep; canvas.innerHTML = chatView(); const ta = document.getElementById('text'); if (ta) { ta.value = val; if (focused) ta.focus(); } document.getElementById('state').textContent = document.getElementById('stateText').textContent; document.getElementById('send').disabled = false; const lastC = [...data.messages].reverse().find((m) => m.role === 'claude'); const key = lastC ? lastC.seq : 0; if (key !== seen) { if (seen !== null && lastC) requestAnimationFrame(() => { const el = document.getElementById('m-' + lastC.seq); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }); seen = key; } }
+  if (escId) { const last = data && data.messages[data.messages.length - 1]; document.getElementById('stamp').textContent = last ? T('esc.lastMsg', { t: when(last.at) }) : ''; }
+  if (!sb) document.getElementById('sidebar').classList.remove('open');
+  setupSpeech(); autoGrow(); };
+// ---- the projects (projects.js): the current one (?project=, else localStorage, else the last escadrille), the
+// picker in the shell, one group per project in the sidebar (the current one open, with its settings), the memory
+const P = window.escadrilleProjects;
+let project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || null;
+let settings = null; let linearMode = ''; /* '', 'replace' or 'clear' */ let settingsOpen = false; let settingsNote = ''; const openGroups = new Set();
+// the one sidebar (sidebar.js) follows the project: drawn now, pointed again whenever the project changes
+const setProject = (p, save = true) => { project = p || null; if (save && project) localStorage.setItem('escadrille.project', project);
+  const q = new URLSearchParams(location.search); if (project) q.set('project', project); else q.delete('project'); const qs = q.toString();
+  history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  window.escadrilleSidebar.render(document.getElementById('sidebar'), { project }); };
+window.escadrilleSidebar.render(document.getElementById('sidebar'), { project });
+const loadSettings = async () => { const r = project ? await api('/api/project/settings?project=' + encodeURIComponent(project)).catch(() => null) : null; settings = r && !r.error ? r : null; };
+const settingsLine = () => { const s = settings; if (!s) return ''; const has = (k) => s.stored.includes(k);
+  const short = [T.usd(Number(s.budget)), s.model ? MODEL_NAMES[s.model] || s.model : T('set.anyModel'), s.network.length ? T('set.domains', { n: s.network.length }) : T('set.noNet'), s.linear && s.linear.key ? 'Linear' : ''].filter(Boolean).join(' · ');
+  // one block per theme (data-block): the plans' defaults, Linear; the next theme (Autonomie) comes as its own block
+  return `<details class="psettings" id="psettings" ${settingsOpen ? 'open' : ''}><summary data-jk><span class="t">${esc(T('set.title', { short }))}</span></summary><form id="settingsForm">
+    <fieldset class="pset" data-block="plans"><legend>${esc(T('set.plans'))}</legend>
+    <p class="note">${esc(T('set.note'))}</p>
+    <label>${esc(T('set.budget'))}<input class="control" name="budget" type="number" min="0.5" step="0.5" value="${has('budget') ? esc(s.budget) : ''}" placeholder="${esc(T('set.default', { v: s.budget }))}"></label>
+    <label>${esc(T('set.model'))}<select class="control" name="model"><option value="">${esc(!has('model') && s.model ? T('set.lastChosen', { m: MODEL_NAMES[s.model] || s.model }) : T('set.any'))}</option>${meta.models.map((m) => `<option value="${esc(m.id)}" ${has('model') && s.model === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+    <p class="note">${esc(T('set.network'))} : ${esc(s.network.length ? s.network.map((e) => e.host || e).join(', ') : T('set.noNet'))} · <a href="#acces-domaines">${esc(T('set.networkEdit'))}</a></p>
+    <label class="check"><input type="checkbox" name="game" ${s.game !== false ? 'checked' : ''}> ${esc(T('set.game'))}</label>
+    <label class="check"><input type="checkbox" name="qa" ${s.qa !== false ? 'checked' : ''}> ${esc(T('set.qa'))}</label>
+    <label>${esc(T('set.dirs'))}<textarea class="control" name="addDirs" rows="2" placeholder="${esc(T('set.dirsPh'))}">${has('addDirs') ? esc(s.addDirs.join('\n')) : ''}</textarea></label></fieldset>
+    ${linearBlock(s)}
+    ${environmentBlock(s)}
+    ${autonomyBlock(s)}
+    ${window.escadrilleTeam ? escadrilleTeam.settingsBlock() : ''}
+    <div><button class="btn" type="submit">${esc(T('set.save'))}</button> <span class="note" role="status">${esc(settingsNote)}</span></div></form></details>`; };
+const saveSettings = async (form) => { const s = settings; const v = (k) => form.querySelector(`[name=${k}]`).value.trim(); const body = { project };
+  const put = (k, val) => { if (val === null) { if (s.stored.includes(k)) body[k] = null; } else body[k] = val; };
+  put('budget', v('budget') ? Number(v('budget')) : null); put('model', v('model') || null);
+  const key = form.querySelector('[name=linearKey]'); if (linearMode === 'clear') body.linearKey = null; else if (key && key.value.trim()) body.linearKey = key.value.trim();
+  const lst = v('linearState') || T('set.linearDefault'); if (!s.linear || lst !== s.linear.state) body.linearState = lst;
+  const sync = form.querySelector('[name=linearSync]'); if (sync && s.linear && sync.checked !== (s.linear.sync !== false)) body.linearSync = sync.checked;
+  const gm = form.querySelector('[name=game]'); if (gm && gm.checked !== (s.game !== false)) body.game = gm.checked;
+  const qa = form.querySelector('[name=qa]'); if (qa && qa.checked !== (s.qa !== false)) body.qa = qa.checked;
+  put('addDirs', v('addDirs') ? v('addDirs').split('\n').map((x) => x.trim()).filter(Boolean) : null);
+  if (form.querySelector('[data-block=autonomy]')) { body.autonomy = autonomyOfForm(form); // the cran: the pilot switch, then the mode (docs/nextstep.md)
+    const k = WHO_CRANS[(form.querySelector('[name=amode]:checked') || {}).value]; if (k && !!(s.autonomy && s.autonomy.pilotOn) !== k.on) { const p = await api('/api/pilot', { project, on: k.on }).catch((x) => ({ error: x.message })); if (p.error) { settingsNote = p.error; renderNav(); return; } } }
+  // the dev environment (docs/devenv.md): pasted JSON, sent only when typed (the guard cookie is checked by the server); the clear button sends null
+  const envField = form.querySelector('[name=environment]'); if (envField && envField.value.trim()) { try { body.environment = JSON.parse(envField.value); } catch (e) { settingsNote = T('set.environmentBad', { e: e.message }); renderNav(); return; } } else if (envField && envField.dataset.clear === '1') body.environment = null;
+  // the team block (docs/team.md) writes POST /api/team on its own, only when one of its fields changed
+  if (window.escadrilleTeam) { const tr = await escadrilleTeam.save(form, project); if (tr.error) { settingsNote = tr.error; renderNav(); return; } }
+  const r = await api('/api/project/settings', body).catch((e) => ({ error: e.message })); settingsNote = r.error || T('set.saved'); if (r.settings) settings = r.settings; if (!r.error) linearMode = ''; renderNav(); };
+// ENV: the dev environment (docs/devenv.md): one textarea of JSON the developer pastes; what is set shows as one line (commands,
+// health, account names, tests), never a password; « Effacer » marks the field so that the save sends null
+const environmentBlock = (s) => { const e = s.environment || { set: false, accounts: [] };
+  const line = e.set ? [Object.keys(e.commands || {}).join(', ') || '–', (e.health || []).map((u) => u.replace(/^https?:\/\//, '')).join(', '), e.accounts.map((a) => a.name).join(', '), Object.keys(e.tests || {}).join(', ')].filter(Boolean).join(' · ') : '';
+  return `<fieldset class="pset" data-block="environment"><legend>${esc(T('set.environment'))}</legend>
+    ${e.set ? `<p class="note">${esc(T('set.environmentSet'))} : ${esc(line)} <button type="button" class="card-link" data-env-clear>${esc(T('set.environmentClear'))}</button></p>` : ''}
+    <textarea class="control" name="environment" rows="4" spellcheck="false" placeholder="${esc(T('set.environmentPh'))}"></textarea>
+    <p class="note">${esc(T('set.environmentNote'))}</p></fieldset>`; };
+document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-env-clear]'); if (!b) return; const f = b.closest('form'); const t = f && f.querySelector('[name=environment]'); if (!t) return; t.value = ''; t.dataset.clear = t.dataset.clear === '1' ? '' : '1'; b.textContent = t.dataset.clear === '1' ? T('set.environmentClear') + ' ✓' : T('set.environmentClear'); });
+// <!-- L: Autonomie (docs/autonomy.md) --> the mode in three choices, the guarded paths one per line, the rest folded in one line
+// « Qui décide quand je ne suis pas là ? » (backlog, Dev 6 November): the three modes in plain sentences, and under the one
+// checked what the pilot can do, what waits for the developer and what it costs at most (the pilot's caps, the plan cap)
+// The three crans of docs/nextstep.md (« Le cran »): Moi, Pilote, Pilote autonome; writing one writes the two old fields,
+// pilot.on (POST /api/pilot) and autonomy.mode (POST /api/project/settings), as lib/nextstep.mjs storedOf does
+const WHO_CRANS = { moi: { on: false, mode: 'surveille' }, pilote: { on: true, mode: 'guide' }, autonome: { on: true, mode: 'autonome' } }; // i18n-ok: the cran ids
+const whoChecked = (a) => (a.ask ? 'pilote' : a.cran || 'moi'); // i18n-ok: the cran ids; the first run checks the recommendation, Pilote (= Guidé)
+const whoChoices = (a, name = 'amode') => { const c = a.caps || { wake: 2, day: 15, plan: 10 }; const usd = (v) => '$' + window.T.num(v); const m = { wake: usd(c.wake), day: usd(c.day), plan: usd(c.plan) };
+  const rows = { moi: [['who.left', T('who.moiLeft')], ['who.can', T('who.moiCan')], ['who.most', T('who.moiCost')]], pilote: [['who.left', T('who.piloteLeft')], ['who.can', T('who.piloteCan')], ['who.most', T('who.costPlan', m)]], autonome: [['who.left', T('who.autonomeLeft')], ['who.can', T('who.autonomeCan', m)], ['who.most', T('who.costAuto', m)]] };
+  const on = whoChecked(a);
+  return `<div class="who" role="radiogroup" aria-label="${esc(T('who.title'))}">${Object.keys(WHO_CRANS).map((id) => `<label class="who-choice"><input type="radio" name="${name}" value="${id}" ${on === id ? 'checked' : ''}><span><b>${esc(T('who.' + id))}</b>${id === 'pilote' ? ` <span class="who-rec">· ${esc(T('who.rec'))}</span>` : ''}</span>
+    <dl>${rows[id].map(([k, v]) => `<dt>${esc(T(k))}</dt><dd>${esc(v)}</dd>`).join('')}</dl></label>`).join('')}</div>
+    <p class="note who-never" title="${esc(T('pilot.what'))}">${esc(T('who.never'))}</p>`; };
+// a cran written: the pilot switch first when it changes, then the mode (the settings answer carries the new cran)
+const writeCran = async (cran, autonomyBody, extra = {}) => { const k = WHO_CRANS[cran] || WHO_CRANS.pilote;
+  if (!!(settings && settings.autonomy && settings.autonomy.pilotOn) !== k.on) { const p = await api('/api/pilot', { project, on: k.on }).catch((x) => ({ error: x.message })); if (p.error) return p; }
+  return api('/api/project/settings', { ...extra, project, autonomy: { ...autonomyBody, mode: k.mode } }).catch((x) => ({ error: x.message })); };
+// The first run (docs/first-run.md): a project just added asks the question once, above its Conversation, the
+// recommendation checked; « Garder ce choix » saves the mode and the question does not come back
+const whoCard = () => { const a = settings && settings.project === project && settings.autonomy; if (!a || !a.ask) return '';
+  return `<form class="who-card" data-who-first aria-labelledby="whoTitle"><h2 id="whoTitle">${esc(T('who.title'))}</h2>${whoChoices(a, 'whofirst')}
+    <div class="who-acts"><button type="submit" class="btn primary">${esc(T('who.keep'))}</button><span class="note">${esc(T('who.later'))}</span></div></form>`; };
+window.escadrilleWho = whoCard; // public/mainchat.js puts it at the head of an empty Conversation
+document.addEventListener('submit', async (e) => { const f = e.target.closest && e.target.closest('[data-who-first]'); if (!f) return; e.preventDefault();
+  const cran = (f.querySelector('[name=whofirst]:checked') || {}).value || 'pilote'; const { caps, ask, cran: was, pilotOn, ...a } = settings.autonomy; // i18n-ok
+  const r = await writeCran(cran, a); if (r.settings) settings = r.settings; render(); });
+const AUTONOMY_FIXED = () => [1, 2, 3, 4, 5].map((k) => T('set.fixed' + k));
+const autonomyBlock = (s) => { const a = s.autonomy; if (!a) return ''; const n = (v) => (v === null || v === undefined ? '' : esc(v));
+  return `<fieldset class="pset" data-block="autonomy"><legend>${esc(T('who.title'))}</legend>
+    ${whoChoices(a)}
+    <label>${esc(T('set.guarded'))}<textarea class="control" name="guardedPaths" rows="3" placeholder=".github/**">${esc(a.guardedPaths.join('\n'))}</textarea></label>
+    <details class="amore"><summary>${esc(T('set.more'))}</summary><div class="pset">
+      <label>${esc(T('set.planCap'))}<input class="control" name="planCapUsd" type="number" min="0.5" step="0.5" value="${n(a.planCapUsd)}" placeholder="${esc(T('set.planCapPh'))}"></label>
+      <label>${esc(T('set.askAbove'))}<input class="control" name="askAboveUsd" type="number" min="0.5" step="0.5" value="${n(a.askAboveUsd)}" placeholder="${esc(T('set.never'))}"></label>
+      <label class="acheck"><input type="checkbox" name="autoMergeIfGreen" ${a.autoMergeIfGreen ? 'checked' : ''}> ${esc(T('set.autoMerge'))}${a.autoMergeIfGreen && !a.testCommand ? ` <span class="note">${esc(T('set.noCmd'))}</span>` : ''}</label>
+      <label>${esc(T('set.testCmd'))}<input class="control" name="testCommand" value="${n(a.testCommand)}" placeholder="npm test"></label>
+      <label>${esc(T('set.quiet'))}<span class="arow"><input class="control" name="quietFrom" type="time" value="${a.quietHours ? esc(a.quietHours.from) : ''}"> ${esc(T('set.to'))} <input class="control" name="quietTo" type="time" value="${a.quietHours ? esc(a.quietHours.to) : ''}"></span></label>
+      <label>${esc(T('set.notify'))}<select class="control" name="notifyLevel">${[['waiting', T('set.nWaiting')], ['all', T('set.nAll')], ['none', T('set.nNone')]].map(([v, t]) => `<option value="${v}" ${a.notifyLevel === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label>${esc(T('set.fallback'))}<input class="control" name="fallbackDelayMin" type="number" min="0" step="1" value="${n(a.fallbackDelayMin)}"></label>
+      <label class="acheck"><input type="checkbox" name="stopAtQuotaLimit" ${a.stopAtQuotaLimit ? 'checked' : ''}> ${esc(T('set.stopQuota'))}</label>
+    </div></details>
+    <details class="amore"><summary>${esc(T('set.fixed'))}</summary><ul class="afixed">${AUTONOMY_FIXED().map((t) => `<li>${esc(t)}</li>`).join('')}</ul></details></fieldset>`; };
+const autonomyOfForm = (form) => { const v = (k) => (form.querySelector(`[name=${k}]`) || {}).value?.trim() ?? ''; const c = (k) => !!(form.querySelector(`[name=${k}]`) || {}).checked; const num = (k) => (v(k) ? Number(v(k)) : null);
+  return { mode: (WHO_CRANS[(form.querySelector('[name=amode]:checked') || {}).value] || WHO_CRANS.moi).mode, guardedPaths: v('guardedPaths').split('\n').map((x) => x.trim()).filter(Boolean), planCapUsd: num('planCapUsd'), askAboveUsd: num('askAboveUsd'), autoMergeIfGreen: c('autoMergeIfGreen'), testCommand: v('testCommand') || null, quietHours: v('quietFrom') && v('quietTo') ? { from: v('quietFrom'), to: v('quietTo') } : null, notifyLevel: v('notifyLevel') || 'waiting', fallbackDelayMin: num('fallbackDelayMin') ?? 10, stopAtQuotaLimit: c('stopAtQuotaLimit') }; };
+// <!-- /L -->
+// Linear (phase 7, the connectors): the key is never sent back by the server, so the field is never filled; when one
+// is stored the block says so, with Remplacer (an empty field again) and Effacer (cleared on Enregistrer)
+const linearBlock = (s) => { const L = s.linear || { key: false, state: T('set.linearDefault') }; const keyField = `<label>${esc(T('set.linearKey'))}<input class="control" name="linearKey" type="password" autocomplete="off" spellcheck="false" placeholder="lin_api_…" aria-describedby="linearWhere"></label>`;
+  const keyRow = !L.key || linearMode === 'replace' ? keyField + (L.key ? `<button type="button" class="card-link" data-linear="">${esc(T('set.keepKey'))}</button>` : '')
+    : linearMode === 'clear' ? `<p class="pset-key">${esc(T('set.keyCleared'))} · <button type="button" class="card-link" data-linear="">${esc(T('set.cancel'))}</button></p>`
+    : `<p class="pset-key">${esc(T('set.keyStored'))} · <button type="button" class="card-link" data-linear="replace">${esc(T('set.replace'))}</button> · <button type="button" class="card-link" data-linear="clear">${esc(T('set.erase'))}</button></p>`;
+  // the sync (docs/connectors.md, « La synchro »): on by default once a key is stored, one checkbox to turn it off
+  const syncRow = L.key ? `<label class="check"><input type="checkbox" name="linearSync" ${L.sync !== false ? 'checked' : ''}> ${esc(T('set.linearSync'))}</label>` : '';
+  return `<fieldset class="pset" data-block="linear"><legend>Linear</legend>${keyRow}
+    <p class="note" id="linearWhere">${esc(T('set.keyWhere'))}</p>${syncRow}
+    <label>${esc(T('set.linearState'))}<input class="control" name="linearState" value="${esc(L.state || T('set.linearDefault'))}" placeholder="${esc(T('set.linearDefault'))}"></label></fieldset>`; };
+document.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('[data-linear]'); if (!b) return; linearMode = b.dataset.linear; renderNav(); const k = document.querySelector('#settingsForm [name=linearKey]'); if (k && linearMode === 'replace') k.focus(); });
+// the project, when the URL and the localStorage say nothing: the last escadrille's; the settings line lives in the Accès view
+const renderNav = async () => { if (!project) { const list = await api('/api/escadrilles'); setProject(P.current({ search: location.search, stored: null, escadrilles: list }), false); }
+  if (isAccess() && access) render(); };
+// the project changes: the URL, the form's project and model, the memory, « Sur ce Mac »
+const choose = async (p) => { if (!p || p === project) return; setProject(p); settingsNote = ''; await loadSettings(); renderNav(); if (window.escadrilleMac) window.escadrilleMac.load();
+  if (escId) return; if (isMemory()) { memory = null; loadMemory(); return; } if (isAccess()) { access = null; loadAccess(); return; } if (window.escadrilleTeam && escadrilleTeam.is()) { escadrilleTeam.load(project); return; } render(); };
+
+// ---- the access view (docs/access.md): what the server and the sessions can read, write and reach, read now, never set here
+let access = null;
+const isAccess = () => !escId && /^#acces(-\w+)?$/.test(location.hash);
+const loadAccess = async () => { const open = [...canvas.querySelectorAll('.acc-row[open]')].map((d) => d.id); const m = /^#acces-(\w+)$/.exec(location.hash); if (m && m[1] === 'equipe') settingsOpen = true; /* #acces-equipe: the settings open on the team block (docs/team.md) */ if (window.escadrilleTeam) escadrilleTeam.load(project); access = await api(P.withProject('/api/access', project)).catch((e) => ({ error: e.message })); render(); for (const id of [...open, ...(m ? ['acc-' + m[1]] : [])]) { const d = document.getElementById(id); if (d) d.open = true; } if (m && m[1] === 'equipe') { const f = canvas.querySelector('[data-block=team]'); if (f && f.scrollIntoView) f.scrollIntoView({ block: 'start' }); } };
+const accessView = () => !access ? `<div class="title-row"><div><h1>${esc(T('nav.access'))}</h1><p class="sub">${esc(T('mem.loading'))}</p></div></div>` : access.error ? `<div class="title-row"><div><h1>${esc(T('nav.access'))}</h1><p class="sub">${esc(access.error)}</p></div></div>` : window.escadrilleAccess.view(access) + settingsLine();
+// ---- the memory of the current project: the file is the truth, the sessions write it (POST /api/memory), the page reads
+let memory = null; let memQuery = '';
+const isMemory = () => !escId && location.hash === '#memoire';
+const loadMemory = async () => { memory = project ? await api('/api/memory?project=' + encodeURIComponent(project)).catch((e) => ({ error: e.message })) : { file: null, lines: [], total: 0 }; render(); const all = canvas.querySelectorAll('.memory li'); if (all.length) all[all.length - 1].scrollIntoView({ block: 'end' }); };
+const memoryEntries = () => { const out = []; for (const l of memory.lines) { if (!l.text.trim()) continue; const prev = out[out.length - 1];
+    if (/^\s{2,}\S/.test(l.text) && prev && !prev.h) { prev.text += ' ' + l.text.trim(); continue; } const h = l.text.match(/^#{1,6}\s+(.*)/); out.push({ n: l.n, text: h ? h[1] : l.text, h: !!h }); } return out; };
+const fold = (x) => String(x).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const memoryView = () => { const name = P.name(project); const head = (sub) => `<div class="title-row"><div><h1>${esc(T('mem.title'))}</h1><p class="sub">${esc(name)} · ${sub}</p></div></div>`;
+  if (!memory) return head(esc(T('mem.loading')));
+  if (memory.error) return head(esc(memory.error));
+  if (!memory.file) return head(`${esc(T('mem.nothingYet'))} · <span class="memory-file" title="${esc(T('mem.fileTitle'))}">${esc(T('mem.fileOr'))}</span>`) + `<p class="empty">${esc(T('mem.empty'))}</p>`;
+  const all = memoryEntries(); const q = fold(memQuery.trim()); const shown = q ? all.filter((e) => fold(e.text).includes(q)) : all;
+  const count = memory.total > memory.lines.length ? T('mem.lastOf', { n: memory.lines.length, total: memory.total }) : T('mem.entries', { n: all.filter((e) => !e.h).length });
+  return `${head(`${esc(T('mem.newest', { count }))} · <span class="memory-file" title="${esc(T('mem.truth'))}">${esc(memory.file.split('/').slice(-2).join('/'))}</span>`)}
+  ${memory.file.includes('/docs/') ? `<p class="sub"><a href="/docs/flot.md" title="${esc(T('mem.docsTitle'))}">${esc(T('mem.readDocs'))}</a></p>` : ''}
+  <div class="memory-head"><input class="control" id="memSearch" type="search" placeholder="${esc(T('mem.search'))}" aria-label="${esc(T('mem.searchAria'))}" value="${esc(memQuery)}"></div>
+  ${shown.length ? `<ol class="memory">${shown.map((e, k) => `<li data-jk data-n="${e.n}" tabindex="${k ? -1 : 0}" class="${e.h ? 'h' : ''}"${e.h ? '' : ' aria-expanded="false"'}>${P.memoryLine(e.text, esc)}</li>`).join('')}</ol>` : `<p class="empty">${esc(T('mem.noMatch'))}</p>`}`; };
+const load = async () => { if (!escId) return; data = await api('/api/escadrille/' + encodeURIComponent(escId)); if (data.error) { canvas.innerHTML = `<div class="title-row"><h1>${esc(T('esc.unknown'))}</h1></div><p class="empty">${esc(data.error)}</p>`; return; } if (!facts || facts.path !== data.escadrille.project) { facts = null; loadFacts(data.escadrille.project); } render(); renderNav(); };
+
+// ---- sending
+const submit = async (form) => { if (!escId) return; const ta = document.getElementById('text'); const text = ta.value.trim(); if (!text) return; const btn = document.getElementById('send'); btn.disabled = true;
+  const r = await api('/api/escadrille/' + encodeURIComponent(escId) + '/message', { text }); if (r.error) { document.getElementById('state').textContent = r.error; btn.disabled = false; return; } ta.value = ''; await load(); };
+document.addEventListener('input', (e) => { const qEl = e.target.closest('.q'); if (qEl && e.target.classList.contains('other')) { const n = Number(qEl.dataset.n); answers[n] = { ...(answers[n] || {}), other: true, text: e.target.value }; tally(); } });
+document.addEventListener('submit', (e) => { e.preventDefault(); if (e.target.id === 'settingsForm') saveSettings(e.target); else submit(e.target); });
+document.addEventListener('input', (e) => { if (e.target.id !== 'memSearch') return; memQuery = e.target.value; const pos = e.target.selectionStart; render(); const m = document.getElementById('memSearch'); m.focus(); m.setSelectionRange(pos, pos); });
+document.addEventListener('toggle', (e) => { if (e.target.id === 'psettings') settingsOpen = e.target.open; else if (e.target.classList && e.target.classList.contains('pgroup')) { const k = e.target.dataset.path; if (e.target.open) openGroups.add(k); else openGroups.delete(k); } }, true);
+document.addEventListener('keydown', (e) => { if (!isMemory() || e.metaKey || e.ctrlKey || e.altKey) return; const m = document.getElementById('memSearch'); if (!m) return;
+  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.preventDefault(); m.focus(); m.select(); }
+  else if (e.key === 'Escape' && e.target === m) { e.preventDefault(); memQuery = ''; render(); document.getElementById('memSearch').focus(); }
+  // Entrée opens a line whole (two lines folded otherwise), Échap closes it through ux.js
+  else if (e.key === 'Enter' && e.target.matches && e.target.matches('.memory li[aria-expanded]')) { e.preventDefault(); e.target.click(); }
+  // ↑ ↓ between the lines, both ways, Home and End (public/ux.js); Tab leaves the list
+  else if (window.escadrilleUX && e.target.matches && e.target.matches('.memory li')) { const all = [...document.querySelectorAll('.memory li')]; const j = window.escadrilleUX.next(all.indexOf(e.target), all.length, e.key); if (j >= 0) { e.preventDefault(); all[j].focus(); all[j].scrollIntoView({ block: 'nearest' }); } } });
+// the keys of the « ? » sheet follow the screen shown (index.html holds several)
+if (window.escadrilleUX) window.escadrilleUX.keys(() => (isMemory() ? [[['/'], T('mem.keySearch')], [['↑', '↓'], T('mem.keyBrowse')], [[T('mem.esc')], T('mem.keyClear')]] : []));
+window.addEventListener('hashchange', () => { if (escId) return; if (isMemory()) loadMemory(); else if (isAccess()) loadAccess(); else if (window.escadrilleTeam && escadrilleTeam.is()) { render(); escadrilleTeam.load(project); } else { render(); if (window.escadrilleBurst) escadrilleBurst.load(project); } renderNav(); });
+document.addEventListener('keydown', (e) => { if (e.target.id === 'text' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(e.target.form); } });
+document.addEventListener('change', async (e) => { const qEl = e.target.closest('.q'); if (qEl && e.target.type === 'radio') { const n = Number(qEl.dataset.n); answers[n] = { ...(answers[n] || {}), other: e.target.value === 'other' }; const ta = qEl.querySelector('textarea.other'); ta.hidden = !answers[n].other; if (answers[n].other) ta.focus(); tally(); return; }
+  if (e.target.closest('#install')) { const items = data.escadrille.install.map((it, k) => ({ ...it, checked: document.querySelector(`#install input[data-k="${k}"]`).checked })); data.escadrille.install = items; await api('/api/escadrille/' + encodeURIComponent(escId) + '/install', { items }); } });
+// a memory line is folded to two lines: a click (not a selection, not a link) opens it whole, a second one folds it
+document.addEventListener('click', (e) => { const li = e.target.closest && e.target.closest('.memory li[aria-expanded]'); if (!li || e.target.closest('a') || String(getSelection && getSelection())) return; li.setAttribute('aria-expanded', String(li.getAttribute('aria-expanded') !== 'true')); });
+// Abandonner a planning (docs/backlog.md, 6 Nov.): POST /api/escadrille/:id/stop, status stopped, back to the Conversation
+// where it has left « À toi »; a message on this page would resume it
+document.addEventListener('click', async (e) => { const b = e.target.closest && e.target.closest('[data-abandon-esc]'); if (!b) return; b.disabled = true;
+  const r = await api('/api/escadrille/' + encodeURIComponent(b.dataset.abandonEsc) + '/stop', {}).catch((x) => ({ error: x.message }));
+  if (r.error) { b.disabled = false; return; } location.href = P.withProject('/', data && data.escadrille ? data.escadrille.project : project); });
+document.addEventListener('click', (e) => { if (e.target.dataset.focus !== undefined) { const ta = document.getElementById('text'); ta.scrollIntoView({ block: 'center' }); ta.focus(); return; }
+  if (e.target.dataset.goto === 'questions') { const el = document.getElementById('questions') || (() => { const lastC = [...data.messages].reverse().find((m) => m.role === 'claude'); return lastC && document.getElementById('m-' + lastC.seq); })(); if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+  if (e.target.dataset.accept !== undefined || e.target.id === 'answerAll') { e.target.disabled = true; e.target.textContent = T('esc.sending'); sendText(composeAnswer()); return; }
+  if (e.target.dataset.installToggle !== undefined) { installOpen = !installOpen; render(); return; }
+  if (e.target.dataset.installAll !== undefined) { const items = data.escadrille.install.map((it) => ({ ...it, checked: true })); data.escadrille.install = items; api('/api/escadrille/' + encodeURIComponent(escId) + '/install', { items }); render(); return; }
+  if (e.target.id === 'notify') { Notification.requestPermission().then((p) => { if (p === 'granted') { localStorage.setItem(notifyKey, '1'); e.target.textContent = T('esc.notified'); e.target.setAttribute('aria-pressed', 'true'); } else e.target.textContent = T('esc.notifDenied'); }); return; } });
+const autoGrow = () => { const ta = document.getElementById('text'); if (!ta) return; const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(320, ta.scrollHeight) + 'px'; }; ta.addEventListener('input', grow); grow(); };
+
+// ---- dictation: see speech.js
+const setupSpeech = () => { const btn = document.getElementById('mic'); if (!btn || btn.disabled) return; attachDictation(document.getElementById('text'), btn, { interim: document.getElementById('interim'), status: document.getElementById('state') }); };
+
+// ---- live
+const connect = () => { if (es) es.close(); if (!escId) return;
+  es = new EventSource('/api/events?escadrille=' + encodeURIComponent(escId)); es.addEventListener('change', () => { load(); if (window.escadrilleMac) window.escadrilleMac.load(); if (window.escadrillePhone) window.escadrillePhone.load(); }); es.onerror = () => { es.close(); setTimeout(connect, 3000); }; };
+// Another language: every view is drawn again from the server, whose texts come in the cookie's language (after
+// mainchat.js and pilotlog.js have dropped what they hold)
+escadrilleI18n.onChange(() => setTimeout(() => { if (escId) { load(); return; } if (isMemory()) { memory = null; loadMemory(); return; } if (isAccess()) { access = null; loadAccess(); return; } if (window.escadrilleBurst && escadrilleBurst.is()) { escadrilleBurst.load(project); return; } if (window.escadrilleTeam && escadrilleTeam.is()) { escadrilleTeam.load(project); return; } render(); }, 0));
+window.addEventListener('popstate', async () => { escId = location.pathname.startsWith('/e/') ? decodeURIComponent(location.pathname.slice(3)) : null; data = null; connect(); if (escId) await load(); else { render(); renderNav(); } });
+(async () => { await loadModelNames(); meta = await api('/api/projects'); await renderNav(); setProject(project, false); await loadSettings(); if (escId) { connect(); await load(); } else if (isMemory() || isAccess()) { render(); await (isMemory() ? loadMemory() : loadAccess()); } else if (window.escadrilleTeam && escadrilleTeam.is()) { render(); await escadrilleTeam.load(project); } else { if (window.escadrilleBurst) escadrilleBurst.load(project); render(); renderNav(); } setInterval(() => { if (escId && data && data.escadrille.status === 'thinking') load(); }, 15000); })();
+</script>
+<script src="/mac.js"></script>
+<script src="/phone.js"></script>
+<script src="/remote.js"></script>
+<script src="/retire.js"></script>
+<script src="/mainchat.js"></script>
+<script src="/pilotlog.js"></script>
+<script src="/game.js"></script>
+</body>
+</html>

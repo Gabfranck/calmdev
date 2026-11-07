@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture de test</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #1c1d1f; background: #f6f5f2; }
+  main { max-width: 1100px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 40px; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+  .card { background: #fff; border: 1px solid #e3e1dc; border-radius: 10px; padding: 20px; min-height: 160px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 28px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Capture de test</h1>
+  <p>Trois colonnes à 1440, deux à 1024, une à 390. Une image externe doit être bloquée.</p>
+  <div class="grid">
+    <div class="card">Un</div><div class="card">Deux</div><div class="card">Trois</div>
+    <div class="card">Quatre</div><div class="card">Cinq</div><div class="card">Six</div>
+  </div>
+  <img src="https://example.com/off-machine.png" alt="" width="1" height="1">
+</main>
+<script>
+  console.warn('avertissement de test');
+  console.error('erreur de test');
+</script>
+</body>
+</html>

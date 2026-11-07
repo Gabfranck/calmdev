@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="rev.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* The review, one page: GitHub's « Files changed » as every dev knows it (title, base ← head, +/−, the file tree
+   with « Vu », the unified diff with both line numbers, the blue « + » on hover, « Terminer la revue » top right),
+   minus the conversation, the checks, the suggestions and the commits. What protects from burnout sits in one
+   folded line above the tab: what to read first (Q's prereview, Y's architecture delta), the files seen, the time.
+   No app sidebar here: the file tree is the left column (GitHub's layout); the frame keeps the tinted ground and
+   the white sheet. Grid at 1440: canvas 1440 - 8 - 48 = 1384; tree 280 + 24 + diffs 1080. */
+:root {
+  --add-bg: #e8f5ec; --add-num: #d1eedb; --del-bg: #fcecec; --del-num: #f7d6d6; --add-ink: #176f30; --del-ink: #b91f25;
+  --hunk-bg: #eef3fb; --hunk-ink: #4b5563; --code: 13px/20px var(--mono); --head-h: 44px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --add-bg: rgba(63, 192, 122, .11); --add-num: rgba(63, 192, 122, .2); --del-bg: rgba(229, 86, 111, .11); --del-num: rgba(229, 86, 111, .2);
+  --add-ink: #4fcb87; --del-ink: #f07084; --hunk-bg: #1b2433; --hunk-ink: #aab4c0; } }
+.rv.frame { min-height: 100svh; }
+.rv .topbar .crumb { color: var(--muted); }
+.rv .canvas { max-width: none; padding-bottom: 64px; }
+.add { color: var(--add-ink); } .del { color: var(--del-ink); }
+
+/* ---- the head: title, base ← head, +/−; the level and the one action on the right ---- */
+.rv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px 24px; margin-bottom: 14px; }
+.rv-head h1 { font-size: var(--fs-title); line-height: 28px; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rv-head .sub { margin-top: 6px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.rv-head .sub code { padding: 1px 6px; border-radius: 6px; background: var(--accent-tint); color: var(--accent); overflow-wrap: anywhere; }
+.rv-head .sub b { font-weight: 600; }
+.finish { display: flex; align-items: center; gap: 16px; flex: none; position: relative; }
+.finish .level { color: var(--faint); font-size: var(--fs-small); text-align: right; max-width: 300px; line-height: 18px; }
+.finish .level b { color: var(--muted); font-weight: 500; }
+.finish-panel { max-width: 640px; margin-left: auto; padding: 4px 0 12px; display: grid; gap: 12px; }
+.finish-panel[hidden] { display: none; }
+.finish-panel h2 { font-size: var(--fs-section); font-weight: 600; }
+.finish-panel textarea, .cform textarea { width: 100%; min-height: 96px; resize: vertical; padding: 8px 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); line-height: 20px; }
+.finish-panel fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; }
+.finish-panel legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.finish-panel label.radio { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 8px; cursor: pointer; }
+.finish-panel label.radio input { margin: 3px 0 0; accent-color: var(--accent); width: 16px; height: 16px; }
+.finish-panel label.radio span { font-weight: 500; }
+.finish-panel label.radio small { grid-column: 2; color: var(--muted); font-size: var(--fs-small); line-height: 18px; }
+.finish-panel .row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.finish-panel .note { color: var(--muted); font-size: var(--fs-small); margin-right: auto; }
+
+/* ---- the calm line: progress, time, what to read first (folded) ---- */
+.calm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border-radius: var(--radius-card); background: var(--raised); margin-bottom: 16px; }
+.calm .bar { width: 120px; height: 6px; border-radius: 3px; background: var(--active); overflow: hidden; flex: none; }
+.calm .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width var(--t-ui) var(--ease-out); }
+.calm .seen { font-weight: 500; }
+.calm .time { color: var(--muted); }
+.calm details { flex: 1 1 100%; }
+.calm details > summary { font-size: var(--fs-body); color: var(--text); }
+.calm details > summary b { font-weight: 600; }
+.calm .first-list { list-style: none; margin: 10px 0 2px; padding: 0; display: grid; gap: 6px; }
+.calm .first-list li { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 2px 16px; }
+.calm .first-list button { justify-self: start; text-align: left; overflow-wrap: anywhere; }
+.calm .first-list .why { color: var(--muted); }
+.calm .rest { margin-top: 8px; color: var(--faint); }
+.calm .arch { margin-top: 10px; color: var(--muted); white-space: pre-line; }
+.calm .summary { margin-top: 10px; color: var(--muted); white-space: pre-line; }
+
+/* ---- the one tab ---- */
+.tabs { display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tabs .tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 2px 10px; font-weight: 600; border-bottom: 2px solid var(--accent); margin-bottom: -1px; }
+.tabs .tab .count { font-size: var(--fs-small); font-weight: 500; padding: 0 7px; border-radius: 999px; background: var(--active); color: var(--muted); }
+.tabs .spacer { flex: 1; }
+.tabs .split { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; font-size: var(--fs-small); }
+.tabs .split input { accent-color: var(--accent); margin: 0; }
+
+/* ---- the body: the tree, the diffs ---- */
+.rv-body { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; align-items: start; }
+.tree { position: sticky; top: 12px; max-height: calc(100svh - 24px); overflow: auto; font-size: var(--fs-small); }
+.tree > summary { display: none; }
+.tree .filter { margin-bottom: 10px; height: 30px; font-size: var(--fs-small); }
+.tree .group { margin: 12px 4px 4px; color: var(--faint); }
+.tree .group:first-of-type { margin-top: 0; }
+.tree ul { list-style: none; margin: 0; padding: 0; }
+.tree ul ul { padding-left: 14px; }
+.tree details > summary { width: 100%; padding: 3px 4px; border-radius: 6px; color: var(--muted); font-weight: 400; font-size: var(--fs-small); }
+.tree details > summary:hover { background: var(--active); }
+.tree .f { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 6px; width: 100%; padding: 3px 4px; border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; color: var(--text); line-height: 18px; }
+.tree .f:hover { background: var(--active); }
+.tree .f[aria-current="true"] { background: var(--accent-tint); }
+.tree .f .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree .f.seen .nm { color: var(--faint); }
+.tree .f .d { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tree .f .ck { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--control); }
+.tree .f.seen .ck { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface); }
+.tree .f.first .nm { font-weight: 500; }
+
+.diffs { display: grid; gap: 16px; min-width: 0; }
+.file { border: 1px solid var(--border); border-radius: var(--radius-card); scroll-margin-top: 12px; min-width: 0; }
+.file.cur { border-color: var(--control); }
+.fh { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: var(--head-h); padding: 6px 12px 6px 6px; background: var(--raised); border-radius: var(--radius-card) var(--radius-card) 0 0; }
+.file.folded .fh { border-radius: var(--radius-card); }
+.fh .fold { width: 28px; height: 28px; border: 0; border-radius: 6px; background: none; cursor: pointer; color: var(--muted); display: grid; place-items: center; flex: none; }
+.fh .fold:hover { background: var(--active); color: var(--text); }
+.fh .fold::before { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin-top: -3px; transition: transform .12s; }
+.file.folded .fh .fold::before { transform: rotate(-45deg); margin: 0 0 0 -3px; }
+.fh .path { min-width: 0; overflow-wrap: anywhere; font: 500 13px/18px var(--mono); }
+.fh .path .dir { color: var(--muted); font-weight: 400; }
+.fh .st { color: var(--faint); font-size: var(--fs-small); white-space: nowrap; }
+.fh .num { font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fh .spacer { flex: 1; }
+.fh .viewed { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--control); border-radius: var(--radius-control); background: var(--surface); color: var(--muted); font-size: var(--fs-small); font-weight: 500; cursor: pointer; white-space: nowrap; flex: none; }
+.fh .viewed:hover { color: var(--text); }
+.fh .viewed input { margin: 0; accent-color: var(--accent); }
+.fh .viewed.on { background: var(--accent-tint); border-color: transparent; color: var(--accent); }
+.file .why { padding: 8px 14px; background: var(--pill-warning-bg); color: var(--pill-warning-ink); font-size: var(--fs-small); line-height: 18px; }
+.file .lazy { padding: 20px 14px; display: flex; align-items: center; gap: 12px; color: var(--muted); flex-wrap: wrap; }
+.file.folded .fb, .file.folded .why { display: none; }
+.fb { overflow-x: auto; }
+
+table.diff { width: 100%; border-collapse: collapse; font: var(--code); tab-size: 4; }
+table.diff td { padding: 0; vertical-align: top; }
+table.diff td.n { width: 1%; min-width: 48px; padding: 0 10px; text-align: right; color: var(--faint); user-select: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.diff td.c { position: relative; padding: 0 16px 0 22px; white-space: pre; }
+table.diff td.c::before { position: absolute; left: 8px; color: var(--faint); }
+table.diff tr.add td.c { background: var(--add-bg); } table.diff tr.add td.n, table.diff td.n.add { background: var(--add-num); }
+table.diff tr.del td.c { background: var(--del-bg); } table.diff tr.del td.n, table.diff td.n.del { background: var(--del-num); }
+table.diff td.c.add { background: var(--add-bg); } table.diff td.c.del { background: var(--del-bg); }
+table.diff tr.add td.c::before, table.diff td.c.add::before { content: "+"; color: var(--add-ink); }
+table.diff tr.del td.c::before, table.diff td.c.del::before { content: "−"; color: var(--del-ink); }
+table.diff td.c.empty { background: var(--raised); }
+table.diff tr.hunk td { background: var(--hunk-bg); color: var(--hunk-ink); padding: 4px 10px; }
+table.diff.split td.c { width: 50%; white-space: pre-wrap; word-break: break-all; }
+table.diff .plus { position: absolute; left: -10px; top: 1px; z-index: 1; width: 20px; height: 18px; border: 0; border-radius: 4px; background: var(--accent); color: var(--accent-ink); font: 600 14px/18px var(--font); cursor: pointer; opacity: 0; transform: scale(.85); transition: opacity var(--t-hover) ease, transform var(--t-hover) ease; }
+table.diff tr:hover .plus, table.diff td.c:hover .plus, table.diff .plus:focus-visible { opacity: 1; transform: none; }
+@media (hover: none) { table.diff .plus { opacity: 0; pointer-events: none; } table.diff tr.tap .plus, table.diff td.c.tap .plus { opacity: 1; transform: none; pointer-events: auto; } }
+table.diff tr.cm > td { padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font: 400 var(--fs-body)/20px var(--font); white-space: normal; }
+
+/* ---- comments ---- */
+.thread { max-width: 760px; display: grid; gap: 8px; }
+.cmt { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px 12px; }
+.cmt.resolved { opacity: .6; }
+.cmt header { display: flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: var(--fs-small); margin-bottom: 4px; }
+.cmt header b { color: var(--text); font-weight: 600; font-size: var(--fs-body); }
+.cmt header .spacer { flex: 1; }
+.md p + p, .md ul, .md p + ul { margin-top: 6px; }
+.md ul { padding-left: 18px; }
+.md code { padding: 1px 4px; border-radius: 4px; background: var(--raised); }
+.md a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.cform { display: grid; gap: 8px; max-width: 760px; }
+.cform .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.cform .row .hint { margin-right: auto; color: var(--faint); font-size: var(--fs-small); }
+
+/* ---- the queue (/review): one line per review, blocking first, « Relire » on the line (direction.md §6); the lines
+   of the home: 44 px on --raised, radius 8, a 28 px button at the right ---- */
+.queue { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-width: 1040px; }
+.queue .line { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: var(--row-height); padding: 6px 12px 6px 10px; border-radius: var(--radius-card); background: var(--raised); }
+.queue .badge { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; font: 500 13px var(--mono); background: var(--active); color: var(--text); }
+.queue .line.first .badge { background: var(--pill-wait-bg); color: var(--pill-wait-ink); }
+.queue .t { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; line-height: 20px; }
+.queue .t b { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.queue .m { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.queue .m .add, .queue .m .del { font-weight: 500; }
+.queue .btn { height: 28px; padding: 0 10px; font-size: var(--fs-small); }
+.queue-h { margin: 32px 0 8px; font-size: var(--fs-section); font-weight: 600; }
+.queue-h:first-child { margin-top: 0; }
+.rv-read { margin-top: 32px; max-width: 1040px; } .rv-read > summary { font-size: var(--fs-section); font-weight: 600; margin-bottom: 8px; }
+.rv-done { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; } .rv-done .m { color: var(--muted); }
+.queue .line.done { background: none; padding-left: 10px; min-height: 36px; }
+.queue .line.done .badge { background: var(--raised); color: var(--muted); }
+.queue-empty { color: var(--muted); max-width: 560px; }
+/* the QA plans of the runs (docs/qa.md), first on the screen: one line each, the same line as a review */
+.rv-qa { margin-bottom: 24px; }
+.rv-back { display: inline-block; margin-bottom: 8px; color: var(--muted); font-size: 14px; } .rv-back:hover { color: var(--text); }
+/* ---- the other kinds: rendered docs and plans, images before / after, the three decisions ---- */
+.rendered { padding: 16px 20px; max-width: 860px; line-height: 22px; }
+.rendered.doc > * + * { margin-top: 10px; }
+.rendered h2, .rendered h3, .rendered h4, .rendered h5 { font-weight: 600; line-height: 1.3; } .rendered h2 { font-size: 20px; } .rendered h3 { font-size: 17px; } .rendered h4, .rendered h5 { font-size: 15px; }
+.rendered pre { padding: 10px 12px; background: var(--raised); border-radius: var(--radius-control); overflow-x: auto; font: var(--code); }
+.rendered table { border-collapse: collapse; font-size: var(--fs-small); } .rendered th, .rendered td { text-align: left; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.rendered .chg { box-shadow: inset 3px 0 0 var(--add-ink); background: var(--add-bg); border-radius: 4px; padding-left: 12px; }
+.plan .ptitle b { font-weight: 600; } .plan .pmeta { color: var(--muted); font-size: var(--fs-small); margin-top: 2px; }
+.plan .waves { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 16px; margin-top: 14px; overflow-x: auto; }
+.plan .pwave h3 { font-size: var(--fs-small); color: var(--muted); font-weight: 500; margin-bottom: 8px; }
+.plan .pnode { padding: 8px 10px; border-radius: var(--radius-control); background: var(--raised); margin-bottom: 8px; display: grid; gap: 2px; }
+.plan .pnode span { color: var(--muted); font-size: var(--fs-small); }
+.ba, .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; padding: 16px; }
+.ba figure, .grid figure { display: grid; gap: 6px; } .ba img, .grid img { width: 100%; height: auto; max-height: 520px; object-fit: contain; background: var(--raised); border-radius: var(--radius-control); }
+.ba figcaption, .grid figcaption { color: var(--muted); font-size: var(--fs-small); }
+.grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); padding: 12px 0; } .grid img { aspect-ratio: 4 / 3; object-fit: cover; object-position: top; }
+.decide { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rule); }
+.decide .m { color: var(--muted); font-size: var(--fs-small); }
+.decide .reason { display: flex; gap: 8px; flex: 1 1 100%; flex-wrap: wrap; } .decide .reason .control { flex: 1 1 260px; width: auto; }
+.qitem { padding: 12px 12px 12px 14px; border-radius: var(--radius-card); background: var(--raised); } .qitem .decide { padding: 10px 0 0; border: 0; }
+@media (max-width: 640px) { .queue .line { grid-template-columns: 28px minmax(0, 1fr); } .queue .line .btn { grid-column: 2; justify-self: start; } .queue .m { white-space: normal; } }
+.qhead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; } .qhead b { font-weight: 600; } .qhead .m, .qitem > .m { color: var(--muted); font-size: var(--fs-small); }
+.qsum { margin-top: 8px; white-space: pre-line; }
+.state { padding: 48px 0; color: var(--muted); max-width: 560px; }
+.state h1 { font-size: var(--fs-title); color: var(--text); margin-bottom: 8px; }
+
+/* ---- the decision bar (phase 11, G): stuck to the foot of the screen whatever the scroll; the form grows it upward ---- */
+.rv-bar { position: sticky; bottom: 0; z-index: 20; margin-top: 24px; padding: 10px 0; background: var(--surface); border-top: 1px solid var(--border); }
+.rv-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rv-blocked { flex: 1 1 260px; min-width: 0; max-width: 62ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pill-warning-ink); font-size: var(--fs-small); text-align: right; }
+.rv-bar-file { min-width: 0; display: inline-flex; align-items: baseline; gap: 8px; color: var(--muted); font-size: var(--fs-small); }
+.rv-bar-file code { font: 500 13px/18px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.rv-bar-file .num { font-variant-numeric: tabular-nums; }
+.rv-bar .spacer { flex: 1; } .rv-bar-cur { display: contents; }
+.rv-bar .decide { margin: 0; padding: 0; border: 0; }
+.rv-bar .btn[aria-expanded="true"] { background: var(--active); }
+.rv .canvas { padding-bottom: 0; }
+@media (max-width: 1100px) { .rv-head { flex-direction: column; } .finish { align-self: stretch; justify-content: space-between; } .finish .level { text-align: left; } }
+@media (max-width: 860px) {
+  .rv .canvas { padding: 16px; }
+  .rv-body { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .tree { position: static; max-height: none; padding: 8px 12px; border-radius: var(--radius-card); background: var(--raised); }
+  .tree > summary { display: inline-flex; font-size: var(--fs-body); color: var(--text); }
+  .tree[open] > summary { margin-bottom: 10px; }
+  .tabs .split, .tabs .keys { display: none; }
+  .fh { flex-wrap: wrap; top: 0; }
+  .fh .path { flex: 1 1 calc(100% - 40px); }
+  .fh .spacer { display: none; }
+  .fh .viewed { margin-left: auto; }
+  table.diff td.c { white-space: pre-wrap; word-break: break-all; }
+  table.diff td.n { min-width: 34px; padding: 0 6px; }
+  .calm .first-list li { grid-template-columns: minmax(0, 1fr); }
+  .finish .level { max-width: none; }
+  .rv-bar-file code { max-width: 60vw; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame rv">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span><span class="stamp" id="stamp"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas"><p class="state" data-i18n="rev.loading"></p></div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+// ---- helpers (?theme=light forces the light theme, for captures)
+if (new URLSearchParams(location.search).get('theme') === 'light') document.documentElement.dataset.theme = 'light';
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const api = async (url, body) => { const r = await fetch(url, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}); const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.error || r.statusText), { status: r.status }); return j; };
+const $ = (sel, el = document) => el.querySelector(sel);
+const n = (x) => T.num(Number(x || 0));
+const when = (iso) => { if (!iso) return ''; return T.dateTime(iso); };
+// Markdown, the simple part: paragraphs, - lists, `code`, **bold**, *em*, [links](http…)
+const inline = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|\W)\*([^*]+)\*/g, '$1<em>$2</em>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" rel="noreferrer">$1</a>');
+const md = (s) => String(s || '').trim().split(/\n{2,}/).map((b) => { const ls = b.split('\n'); return ls.every((l) => /^\s*[-*] /.test(l)) ? `<ul>${ls.map((l) => `<li>${inline(l.replace(/^\s*[-*] /, ''))}</li>`).join('')}</ul>` : `<p>${ls.map(inline).join('<br>')}</p>`; }).join('');
+
+const LEVELS = new Proxy({}, { get: (o, k) => (['strict', 'guided', 'auto'].includes(k) ? [T('rev.lv.' + k), T('rev.lv.' + k + 'Line')] : undefined) });
+const STATUS = new Proxy({}, { get: (o, k) => (['added', 'deleted', 'renamed'].includes(k) ? T('rev.st.' + k) : k === 'modified' ? '' : undefined) });
+const VERDICTS = new Proxy({}, { get: (o, k) => ({ comment: [T('rev.v.comment'), ''], approve: [T('rev.v.approve'), 'pos'], changes: [T('rev.v.changes'), 'neg'] })[k] });
+const AUTHORS = new Proxy({}, { get: (o, k) => (k === 'claude' ? 'Claude' : ['dev', 'pilot'].includes(k) ? T('rev.a.' + k) : undefined) });
+
+// ---- where the review comes from: /review/:id, or /review?plan=&session= / ?project=&base=&head=
+const q = new URLSearchParams(location.search);
+const idFromPath = decodeURIComponent(location.pathname.replace(/^\/review\/?/, '').split('/')[0] || '');
+const reviewUrl = idFromPath ? `/api/review/${encodeURIComponent(idFromPath)}` : `/api/review?${q}`;
+let R = null, delta = null, first = new Map(), order = [], cur = 0, split = localStorage.getItem('review.split') === '1';
+const loaded = new Set(); const folded = new Set(); let hoverRow = null, finishOpen = false, filter = '', big = false;
+
+const minutesOf = (files) => Math.round(files.filter((f) => !f.generated && !f.binary && kindOf(f) === 'code').reduce((a, f) => a + f.additions + f.deletions, 0) / 400 * 60);
+const duration = (m) => m < 5 ? T('main.lt5') : m < 60 ? T('rev.durMin', { n: Math.round(m / 5) * 5 }) : m % 60 >= 5 ? T('rev.durHM', { n: Math.floor(m / 60), m: String(Math.round(m % 60 / 5) * 5).padStart(2, '0') }) : T('rev.durH', { n: Math.floor(m / 60) });
+const fileOf = (path) => R.files.find((f) => f.path === path);
+const idx = (f) => R.files.indexOf(f);
+
+// what to read first: Q's readFirst, then the files of modules Y says are new; ranked first in the list
+const readFirst = () => { const m = new Map();
+  for (const r of (R.prereview && R.prereview.readFirst) || []) if (fileOf(r.path)) m.set(r.path, r.why);
+  for (const f of R.files) if (!m.has(f.path) && f.flagged) m.set(f.path, f.flagged);
+  for (const r of (R.prereview && R.prereview.files) || []) if (r.flag && !m.has(r.path) && fileOf(r.path)) m.set(r.path, r.why || r.flag);
+  const mods = (delta && delta.added && delta.added.modules) || [];
+  for (const f of R.files) if (!m.has(f.path) && mods.some((mod) => { const id = typeof mod === 'string' ? mod : mod.id; return f.path === id || f.path.startsWith(id + '/') || f.path.replace(/\.[^./]+$/, '') === id; })) m.set(f.path, T('rev.newModule'));
+  return m; };
+
+// /review alone: the queue (GET /api/reviews), what to look at first already ranked by the server
+// Titled « Revue »; the subtitle counts: « 3 revues · environ 25 min »; nothing to read: « Rien à relire. » and, under it,
+// the reviews already given a verdict (the server still lists an approved review until its branch is merged), so the
+// frame is not empty. One line per review (the session's letter, the title, files, lines, level), blocking first as the
+// server ranks them; the one action on the line is « Relire », primary on the first line only.
+const verdictOf = (r) => r.verdict && (r.verdict.verdict || r.verdict);
+const queueLine = (r, k, done) => { const v = VERDICTS[verdictOf(r)]; const lv = LEVELS[r.level] || LEVELS.guided; const href = `/review/${encodeURIComponent(r.id)}${q.get('project') ? '?project=' + encodeURIComponent(q.get('project')) : ''}`;
+  const meta = done ? `${v ? `<span class="pill ${v[1]}">${v[0]}</span>` : ''}<span class="m">${when(r.verdict && r.verdict.at || r.waitingSince)}</span>` : `${v && r.verdict && r.verdict.stale ? `<span class="pill">${esc(T('rev.staleApproval'))}</span>` : v ? `<span class="pill ${v[1]}">${v[0]}</span>` : `<span class="pill">${esc(T('rev.toReview'))}</span>`}<span class="m">${esc(T('rev.files', { n: r.files || 0 }))} · <span class="add">+${n(r.additions)}</span> <span class="del">−${n(r.deletions)}</span>${r.viewed ? ` · ${esc(T('rev.viewed', { n: r.viewed }))}` : ''}${r.comments ? ` · ${esc(T('rev.comments', { n: r.comments }))}` : ''} · ${lv[0]}</span>`;
+  return `<li class="line ${done ? 'done' : k === 0 ? 'first' : ''}"><span class="badge" title="${esc(r.session ? T('rev.session', { s: r.session }) : r.kind === 'code' ? T('rev.aBranch') : KINDS[r.kind] || '')}">${esc(r.session || (r.kind && r.kind !== 'code' ? KINDS[r.kind].slice(0, 1) : '·'))}</span><span class="t"><b title="${esc(r.title || r.head)}">${esc(r.title || r.head)}</b>${meta}</span>${done ? `<a class="btn" href="${href}">${esc(T('rev.again'))}</a>` : `<a class="btn ${k === 0 ? 'primary' : ''}" href="${href}">${esc(T('rev.review'))}</a>`}</li>`; };
+// The QA plans of the last runs (GET /api/qa), first: « Plan de QA », the plan, its state, « Ouvrir » once written
+const QA_STATE = (x) => (x.ready ? 'rev.qaReady' : x.status === 'running' || x.status === 'waiting' ? 'rev.qaWriting' : x.status === 'done' ? 'rev.qaStopped' : 'rev.qaQueued');
+const qaLine = (x, primary) => `<li class="line"><span class="badge" title="${esc(T('rev.qa'))}">QA</span><span class="t"><b title="${esc(x.title)}">${esc(T('rev.qa'))} · ${esc(x.title)}</b><span class="m">${esc(T(QA_STATE(x)))}${x.at ? ' · ' + when(x.at) : ''}</span></span>${x.ready ? `<a class="btn ${primary ? 'primary' : ''}" href="${esc(x.url)}">${esc(T('rev.qaOpen'))}</a>` : ''}</li>`;
+const queue = async () => { $('#crumb').textContent = T('rev.title'); document.title = T('rev.title');
+  const pq = q.get('project') ? '?project=' + encodeURIComponent(q.get('project')) : '';
+  const [j, qj] = await Promise.all([api('/api/reviews' + pq).catch(() => ({ reviews: [] })), api('/api/qa' + pq).catch(() => ({ qa: [] }))]); const all = j.reviews || j || []; const qas = qj.qa || [];
+  // « À relire »: everything not approved on its last commit; « Relues »: folded, the approved ones (a kit's sessions stay here)
+  const PJ = window.escadrilleProjects; const done = all.filter(PJ.reviewed).slice(0, 20); const rs = PJ.toReview(all);
+  const m = Math.round(rs.reduce((a, r) => a + (r.additions || 0) + (r.deletions || 0), 0) / 400 * 60);
+  const sub = esc(rs.length ? T('rev.reviews', { n: rs.length, d: duration(m) }) : T('rev.nothing'));
+  const firstCode = rs.findIndex((r) => !r.kind || r.kind === 'code'); // « Relire » is primary on the first branch to read
+  const lines = rs.map((r, k) => (r.kind && r.kind !== 'code' ? queueItem(r) : queueLine(r, k === firstCode ? 0 : k + 1, false))).join('');
+  $('#canvas').innerHTML = `<header class="rv-head"><div><h1>${esc(T('rev.title'))}</h1><p class="sub">${sub}</p></div></header>
+    ${qas.length ? `<ul class="queue rv-qa" aria-label="${esc(T('rev.qa'))}">${qas.map((x, k) => qaLine(x, k === 0 && !rs.length)).join('')}</ul>` : ''}
+    ${rs.length ? `<ul class="queue">${lines}</ul>` : ''}
+    ${done.length ? `<details class="rv-read" id="rvRead"><summary>${esc(T('rev.readN', { n: done.length }))}</summary><ul class="queue">${done.map((r, k) => queueLine(r, k, true)).join('')}</ul></details>` : ''}`; };
+
+// an item of the queue that is not a branch: a stop's answer (done / left), a bench of images, a doc or a plan to read
+const KINDS = new Proxy({}, { get: (o, k) => (['stop', 'image', 'doc', 'plan'].includes(k) ? T('rev.k.' + k) : undefined) });
+const reste = (r) => { const m = String(r.summary || r.text || '').match(/(?:Reste|Left)\s*:\s*(.*)/); /* i18n-ok: the summary line of escadrille:state */ const w = (m ? m[1] : String(r.summary || r.text || '')).trim().split(/\s+/); return w.slice(0, 10).join(' ') + (w.length > 10 ? '…' : ''); };
+const queueItem = (r) => { qitems.set(r.id, r); const who = [r.plan, r.session ? T('rev.sessionS', { s: r.session }) : ''].filter(Boolean).join(' · ');
+  const body = r.kind === 'stop' ? `<p class="qsum">${esc(reste(r))}</p><details><summary>${esc(T('rev.details'))}</summary><p class="qsum">${esc(r.summary || '')}</p><p class="m">${esc(r.text || '')}</p></details>`
+    : r.kind === 'image' ? `<div class="grid">${(r.images || []).map((im) => `<figure><img src="${esc(im.src)}" alt="${esc(im.label || '')}" loading="lazy"><figcaption>${esc(im.label || '')}</figcaption></figure>`).join('')}</div>`
+    : r.kind === 'doc' ? `<div class="rendered md">${md(r.text || '')}</div>` : r.kind === 'plan' ? planHtml(r.text || '{}') : '';
+  return `<li class="qitem"><div class="qhead"><span class="pill">${KINDS[r.kind] || r.kind}</span><b>${esc(r.title || '')}</b><span class="m">${esc(who)}</span></div>${body}${decideBar(r.id, { retries: r.retries, decision: r.decision }, r.retryMax ?? 2)}</li>`; };
+
+// the shell is the one sidebar (sidebar.js), pointed at the review's own project once read, else the last one chosen
+let pnFor = null;
+const pn = (project) => { if (!project || project === pnFor) return; pnFor = project; window.escadrilleSidebar.render(document.getElementById('sidebar'), { project }); };
+window.escadrilleSidebar.render(document.getElementById('sidebar'));
+const load = async () => {
+  // the project as the home picks it: ?project=, else the last one chosen, else the one of the last escadrille
+  const known = q.get('project') || localStorage.getItem('escadrille.project');
+  if (known) pn(known); else api('/api/escadrilles').then((list) => pn(window.escadrilleProjects.current({ search: location.search, stored: null, escadrilles: Array.isArray(list) ? list : [] }))).catch(() => {});
+  // the queue: /review alone, or with only ?project= (the line above) or ?theme=; a review is asked by its own keys
+  // (plan & session, base & head, kind), never by an unknown parameter
+  if (!idFromPath && !['plan', 'session', 'base', 'head', 'kind', 'repo'].some((k) => q.has(k))) return queue();
+  try { R = await api(reviewUrl); } catch (e) { $('#canvas').innerHTML = `<div class="state"><h1>${esc(T('rev.none'))}</h1><p>${esc(e.status === 404 ? T('rev.notFound') : T('rev.down', { e: e.message }))}</p><p style="margin-top:12px"><a class="card-link" href="/">${esc(T('rev.home'))}</a></p></div>`; return; }
+  if (R.project || R.repo) pn(R.project || R.repo);
+  const dq = R.plan && R.session ? `plan=${encodeURIComponent(R.plan)}&session=${encodeURIComponent(R.session)}` : `project=${encodeURIComponent(R.project || R.repo || '')}&base=${encodeURIComponent(R.base)}&head=${encodeURIComponent(R.head)}`;
+  delta = R.architecture || await api(`/api/architecture/delta?${dq}`).catch(() => null);
+  for (const f of R.files) if (kindOf(f) !== 'code') view.set(f.path, 'rendered');
+  first = readFirst();
+  order = [...R.files.filter((f) => first.has(f.path)).sort((a, b) => [...first.keys()].indexOf(a.path) - [...first.keys()].indexOf(b.path)), ...R.files.filter((f) => !first.has(f.path))];
+  for (const f of R.files) if (f.viewed) folded.add(f.path);
+  // a big review opens on what to read first (else its first five files); j / k and the tree unfold the next one
+  big = R.files.length > 30 || R.files.reduce((t, f) => t + f.additions + f.deletions, 0) > 2000;
+  if (big) order.forEach((f, k) => { if (first.size ? !first.has(f.path) : k >= 5) folded.add(f.path); });
+  document.title = T('rev.docTitle', { t: R.title || R.head });
+  render();
+};
+
+// ---- the diff of one file, unified or side by side
+const commentsAt = (f, side, line) => (R.comments || []).filter((c) => c.path === f.path && c.side === side && c.line === line);
+const anchorOf = (l) => l.kind === 'del' ? ['old', l.old] : ['new', l.new];
+const plusBtn = (side, line) => R && R.merged ? '' : `<button type="button" class="plus" data-side="${side}" data-line="${line}" aria-label="Commenter la ligne ${line}" tabindex="-1">+</button>`;
+const threadRow = (f, side, line, cols) => { const cs = commentsAt(f, side, line); const open = formAt && formAt.path === f.path && formAt.side === side && formAt.line === line;
+  if (!cs.length && !open) return '';
+  return `<tr class="cm"><td colspan="${cols}"><div class="thread">${cs.map(cmt).join('')}${open ? form(f, side, line) : ''}</div></td></tr>`; };
+const cmt = (c) => `<article class="cmt ${c.resolved ? 'resolved' : ''}"><header><b>${esc(AUTHORS[c.author] || c.author)}</b><span>${when(c.at)}</span><span class="spacer"></span>${c.resolved ? `<span>${esc(T('rev.resolved'))}</span>` : R && R.merged ? '' : `<button type="button" class="card-link" data-resolve="${c.id}">${esc(T('rev.resolve'))}</button>`}</header><div class="md">${md(c.body)}</div></article>`;
+let formAt = null;
+const form = (f, side, line) => `<form class="cform" data-form><textarea name="body" placeholder="${esc(T('rev.leave'))}" aria-label="${esc(T('rev.onLine', { n: line }))}" required></textarea><div class="row"><span class="hint">${esc(T(side === 'old' ? 'rev.lineDel' : 'rev.line'))} ${line}</span><button type="button" class="btn" data-cancel>${esc(T('rev.cancel'))}</button><button type="submit" class="btn primary">${esc(T('rev.addComment'))}</button></div></form>`;
+
+const unified = (f) => { const rows = [];
+  for (const h of f.hunks || []) { rows.push(`<tr class="hunk"><td colspan="3">${esc(h.header)}</td></tr>`);
+    for (const l of h.lines) { const [side, line] = anchorOf(l);
+      rows.push(`<tr class="${l.kind}" data-side="${side}" data-line="${line}"><td class="n">${l.old ?? ''}</td><td class="n">${l.new ?? ''}</td><td class="c">${plusBtn(side, line)}${esc(l.text)}</td></tr>`, threadRow(f, side, line, 3)); } }
+  return `<table class="diff"><tbody>${rows.join('')}</tbody></table>`; };
+const sideBySide = (f) => { const rows = [];
+  for (const h of f.hunks || []) { rows.push(`<tr class="hunk"><td colspan="4">${esc(h.header)}</td></tr>`); const ls = h.lines; let i = 0;
+    while (i < ls.length) {
+      if (ls[i].kind === 'ctx') { const l = ls[i++]; rows.push(`<tr data-side="new" data-line="${l.new}"><td class="n">${l.old}</td><td class="c">${esc(l.text)}</td><td class="n">${l.new}</td><td class="c">${plusBtn('new', l.new)}${esc(l.text)}</td></tr>`, threadRow(f, 'new', l.new, 4)); continue; }
+      const dels = [], adds = []; while (i < ls.length && ls[i].kind === 'del') dels.push(ls[i++]); while (i < ls.length && ls[i].kind === 'add') adds.push(ls[i++]);
+      for (let k = 0; k < Math.max(dels.length, adds.length); k++) { const d = dels[k], a = adds[k];
+        rows.push(`<tr><td class="n ${d ? 'del' : ''}">${d ? d.old : ''}</td><td class="c ${d ? 'del' : 'empty'}">${d ? plusBtn('old', d.old) + esc(d.text) : ''}</td><td class="n ${a ? 'add' : ''}">${a ? a.new : ''}</td><td class="c ${a ? 'add' : 'empty'}">${a ? plusBtn('new', a.new) + esc(a.text) : ''}</td></tr>`);
+        if (d) rows.push(threadRow(f, 'old', d.old, 4)); if (a) rows.push(threadRow(f, 'new', a.new, 4)); } } }
+  return `<table class="diff split"><tbody>${rows.join('')}</tbody></table>`; };
+
+// ---- the other kinds of content (Dev, 09:20): images before / after, Markdown rendered, a plan read as its flow
+const kindOf = (f) => /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(f.path) ? 'image' : /\.(md|markdown)$/i.test(f.path) ? 'doc' : /(^|\/)plans\/[^/]+\.json$/.test(f.path) ? 'plan' : 'code';
+const view = new Map(); const raw = new Map();
+const rawUrl = (f, side) => `/api/review/${encodeURIComponent(R.id)}/raw?path=${encodeURIComponent(side === 'old' && f.oldPath ? f.oldPath : f.path)}&side=${side}`;
+// the text at head: the raw route when the server has it, else what the hunks show of the new side
+const newText = async (f) => { if (raw.has(f.path)) return raw.get(f.path); let t = null;
+  try { const r = await fetch(rawUrl(f, 'new')); if (r.ok) t = await r.text(); } catch {}
+  if (t == null) t = (f.hunks || []).map((h) => h.lines.filter((l) => l.kind !== 'del').map((l) => l.text).join('\n')).join('\n\n…\n\n');
+  raw.set(f.path, t); return t; };
+const addedLines = (f) => new Set((f.hunks || []).flatMap((h) => h.lines).filter((l) => l.kind === 'add').map((l) => l.new));
+const docHtml = (f, text) => { const added = addedLines(f); const out = []; const ls = text.split('\n'); let i = 0;
+  const mark = (a, b) => { for (let k = a; k <= b; k++) if (added.has(k + 1)) return ' class="chg"'; return ''; };
+  while (i < ls.length) { const s = i;
+    if (!ls[i].trim()) { i++; continue; }
+    if (/^```/.test(ls[i])) { i++; while (i < ls.length && !/^```/.test(ls[i])) i++; out.push(`<pre${mark(s, i)}><code>${esc(ls.slice(s + 1, i).join('\n'))}</code></pre>`); i++; continue; }
+    const h = ls[i].match(/^(#{1,4})\s+(.*)$/); if (h) { out.push(`<h${h[1].length + 1}${mark(i, i)}>${inline(h[2])}</h${h[1].length + 1}>`); i++; continue; }
+    if (/^\s*\|/.test(ls[i])) { while (i < ls.length && /^\s*\|/.test(ls[i])) i++; const rows = ls.slice(s, i).filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r)).map((r) => r.trim().replace(/^\||\|$/g, '').split('|'));
+      out.push(`<table${mark(s, i - 1)}>${rows.map((r, k) => `<tr>${r.map((c) => `<${k ? 'td' : 'th'}>${inline(c.trim())}</${k ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</table>`); continue; }
+    while (i < ls.length && ls[i].trim() && !/^(#{1,4}\s|```|\s*\|)/.test(ls[i])) i++;
+    out.push(`<div${mark(s, i - 1)}>${md(ls.slice(s, i).join('\n'))}</div>`); }
+  return `<div class="rendered md doc">${out.join('')}</div>`; };
+const planHtml = (text) => { let p; try { p = JSON.parse(text); } catch { return `<p class="lazy">${esc(T('rev.badJson'))}</p>`; }
+  const waves = p.waves && p.waves.length ? p.waves : [{ n: 1, title: T('rev.wave', { n: 1 }) }]; const ss = p.sessions || [];
+  const total = ss.reduce((a, s) => a + (Number(s.budget) || 0), 0);
+  return `<div class="rendered plan"><p class="ptitle"><b>${esc(p.title || p.id || 'Plan')}</b>${p.goal ? ` · ${esc(p.goal)}` : ''}</p><p class="pmeta">${esc(T('main.sessionsN', { n: ss.length }))}${total ? ` · ${esc(T('rev.budget', { usd: T.usd(total) }))}` : ''}${(p.network || []).length ? ` · ${esc(T('rev.net', { list: p.network.join(', ') }))}` : ` · ${esc(T('rev.noNet'))}`}</p>
+    <div class="waves">${waves.map((w) => `<section class="pwave"><h3>${esc(w.title || T('rev.wave', { n: w.n }))}</h3>${ss.filter((s) => (s.wave || 1) === w.n).map((s) => `<div class="pnode"><b>${esc(s.id)}</b> ${esc(s.name || '')}<span>${esc(s.model || '')}${s.budget ? ` · ${esc(T.usd(Number(s.budget)))}` : ''}${s.after && s.after.length ? ` · ${esc(T('rev.after', { list: s.after.join(', ') }))}` : ''}</span>${(s.stops || []).length ? `<span>${esc(T('esc.stops', { n: s.stops.length }))}</span>` : ''}</div>`).join('')}</section>`).join('')}</div></div>`; };
+const imageHtml = (f) => { const fig = (side, cap) => `<figure><img src="${rawUrl(f, side)}" alt="${esc(cap + ' : ' + f.path)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('p'),{className:'lazy',textContent:${esc(JSON.stringify(T('rev.noImage')))}}))"><figcaption>${cap}</figcaption></figure>`;
+  return `<div class="ba">${f.status !== 'added' ? fig('old', esc(T('rev.before'))) : ''}${f.status !== 'deleted' ? fig('new', esc(T(f.status === 'added' ? 'rev.new' : 'rev.afterImg'))) : ''}</div>`; };
+const renderedBody = (f) => { const k = kindOf(f); if (k === 'image') return imageHtml(f);
+  if (raw.has(f.path)) return k === 'plan' ? planHtml(raw.get(f.path)) : docHtml(f, raw.get(f.path));
+  newText(f).then(() => redrawFile(f)); return `<p class="lazy">${esc(T('rev.readingFile'))}</p>`; };
+// Accepter · Refuser avec un motif · Relancer (plafonné par retryMax, défaut 2 : au-delà, l'élément passe au développeur)
+const decideBar = (key, d = {}, retryMax = 2) => { if (R && R.merged && !qitems.has(key)) return ''; /* merged: read only */ const tries = d.retries || 0; const out = tries >= retryMax;
+  if (d.decision === 'accept') return `<div class="decide done" data-key="${esc(key)}"><span class="pill pos">${esc(T('rev.accepted'))}</span><button type="button" class="card-link" data-decide="undo">${esc(T('rev.cancel'))}</button></div>`;
+  if (d.decision === 'reject' && !d.editing) return `<div class="decide done" data-key="${esc(key)}"><span class="pill neg">${esc(T('rev.refused'))}</span><span class="m">${esc(d.reason || '')}</span></div>`;
+  return `<div class="decide" data-key="${esc(key)}">${d.editing ? `<form class="reason" data-reason><input class="control" name="reason" placeholder="${esc(T('rev.reason'))}" aria-label="${esc(T('rev.reasonAria'))}" required><button type="submit" class="btn">${esc(T('rev.sendRefusal'))}</button><button type="button" class="btn ghost" data-decide="cancel">${esc(T('rev.cancel'))}</button></form>` : `<button type="button" class="btn" data-decide="accept">${esc(T('rev.accept'))}</button><button type="button" class="btn" data-decide="reject">${esc(T('rev.refuse'))}</button><button type="button" class="btn" data-decide="retry" ${out ? 'disabled' : ''}>${esc(T('rev.retry'))}</button><span class="m">${esc(out ? T('rev.retriesOut') : tries ? T('rev.retries', { n: tries, max: retryMax }) : '')}</span>`}</div>`; };
+const decisions = new Map();
+
+const fileBody = (f) => {
+  if (view.get(f.path) === 'rendered') return renderedBody(f) + decideBar(f.path, { ...(f.decision || {}), ...(decisions.get(f.path) || {}) }, R.retryMax ?? 2);
+  if (f.binary) return `<p class="lazy">${esc(T('rev.binary'))}</p>`;
+  const needsLoad = (f.generated || f.collapsed || !f.hunks) && !loaded.has(f.path);
+  if (needsLoad) return `<div class="lazy"><span>${esc(f.generated ? T('rev.generated') : T('rev.bigDiff', { n: f.additions + f.deletions }))}</span><button type="button" class="btn" data-load>${esc(T('rev.loadDiff'))}</button></div>`;
+  if (!(f.hunks || []).length) return `<p class="lazy">${esc(T(f.status === 'renamed' ? 'rev.renamedOnly' : 'rev.noLine'))}</p>`;
+  return split && matchMedia('(min-width: 861px)').matches ? sideBySide(f) : unified(f);
+};
+const fileHtml = (f) => { const i = idx(f); const slash = f.path.lastIndexOf('/'); const why = first.get(f.path);
+  return `<section class="file ${folded.has(f.path) ? 'folded' : ''} ${order[cur] === f ? 'cur' : ''}" id="f-${i}" data-i="${i}" aria-label="${esc(f.path)}">
+    <header class="fh"><button type="button" class="fold" data-fold aria-expanded="${!folded.has(f.path)}" aria-label="${esc(T(folded.has(f.path) ? 'rev.unfold' : 'rev.foldF', { f: f.path }))}"></button>
+      <span class="path">${f.oldPath ? `<span class="dir">${esc(f.oldPath)} → </span>` : ''}<span class="dir">${esc(f.path.slice(0, slash + 1))}</span>${esc(f.path.slice(slash + 1))}</span>
+      ${STATUS[f.status] ? `<span class="st">${STATUS[f.status]}</span>` : ''}${f.binary ? `<span class="st">${esc(T(kindOf(f) === 'image' ? 'rev.image' : 'rev.binaryShort'))}</span>` : `<span class="num add">+${n(f.additions)}</span><span class="num del">−${n(f.deletions)}</span>`}<span class="spacer"></span>
+      ${kindOf(f) !== 'code' && !(f.binary && kindOf(f) !== 'image') ? `<button type="button" class="card-link" data-toggle-view>${esc(view.get(f.path) === 'rendered' ? (f.binary ? '' : T('rev.seeDiff')) : kindOf(f) === 'image' ? T('rev.seeImage') : T('rev.seeRender'))}</button>` : ''}
+      <label class="viewed ${f.viewed ? 'on' : ''}"><input type="checkbox" data-viewed ${f.viewed ? 'checked' : ''}>${esc(T('plan.seen'))}</label></header>
+    ${why ? `<p class="why">${esc(why)}</p>` : ''}
+    <div class="fb">${folded.has(f.path) ? '' : fileBody(f)}</div></section>`; };
+
+// ---- the tree: what to read first, then every file by folder (single-child folders joined, like GitHub)
+const treeOf = (files) => { const root = { dirs: new Map(), files: [] };
+  for (const f of files) { const parts = f.path.split('/'); let node = root; for (const p of parts.slice(0, -1)) { if (!node.dirs.has(p)) node.dirs.set(p, { dirs: new Map(), files: [] }); node = node.dirs.get(p); } node.files.push(f); }
+  const squash = (name, node) => { while (node.files.length === 0 && node.dirs.size === 1) { const [k, v] = [...node.dirs][0]; name += '/' + k; node = v; } return [name, node]; };
+  const draw = (node) => `<ul>${[...node.dirs].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => { const [name, nd] = squash(k, v); return `<li><details open><summary>${esc(name)}</summary>${draw(nd)}</details></li>`; }).join('')}${node.files.map((f) => `<li>${fileBtn(f, f.path.split('/').pop())}</li>`).join('')}</ul>`;
+  return draw(root); };
+const fileBtn = (f, label) => `<button type="button" class="f ${f.viewed ? 'seen' : ''} ${first.has(f.path) ? 'first' : ''}" data-goto="${idx(f)}" aria-current="${order[cur] === f}" title="${esc(f.path)}"><span class="ck" aria-hidden="true"></span><span class="nm">${esc(label)}</span><span class="d">${f.binary ? esc(T(kindOf(f) === 'image' ? 'rev.image' : 'rev.binaryShort')) : `<span class="add">+${n(f.additions)}</span> <span class="del">−${n(f.deletions)}</span>`}</span></button>`;
+const treeHtml = () => { const fs = R.files.filter((f) => !filter || f.path.toLowerCase().includes(filter));
+  const top = order.filter((f) => first.has(f.path) && fs.includes(f));
+  return `<summary>${esc(T('rev.filesN', { n: R.files.length }))}</summary><input class="control filter" id="filter" type="search" placeholder="${esc(T('rev.filter'))}" aria-label="${esc(T('rev.filter'))}" value="${esc(filter)}">
+    <div id="treeList">${top.length ? `<p class="group">${esc(T('rev.lookFirst'))}</p><ul>${top.map((f) => `<li>${fileBtn(f, f.path)}</li>`).join('')}</ul><p class="group">${esc(T('rev.allFiles'))}</p>` : ''}${fs.length ? treeOf(fs) : `<p class="empty">${esc(T('rev.noFileMatch'))}</p>`}</div>`; };
+
+// ---- the page
+const headHtml = () => { const fs = R.files.filter((f) => !f.generated); const add = fs.reduce((a, f) => a + f.additions, 0), del = fs.reduce((a, f) => a + f.deletions, 0);
+  const lv = LEVELS[R.level] || LEVELS.guided; const v = R.verdict && VERDICTS[R.verdict.verdict || R.verdict];
+  return `<header class="rv-head"><div style="min-width:0"><a class="rv-back" href="/review${R.project || R.repo ? '?project=' + encodeURIComponent(R.project || R.repo) : ''}">← ${esc(T('rev.title'))}</a><h1>${esc(R.title || R.head)}${R.merged ? `<span class="pill pos">${esc(mergedLabel())}</span>` : v ? `<span class="pill ${v[1]}">${v[0]}</span>` : ''}</h1>
+      <p class="sub"><code>${esc(R.base)}</code><span aria-label="${esc(T('rev.receives'))}">←</span><code>${esc(R.head)}</code><span class="add num"><b>+${n(add)}</b></span><span class="del num"><b>−${n(del)}</b></span><span>${esc(T('rev.files', { n: R.files.length }))}</span></p></div>
+    <div class="finish"><p class="level" id="level"><b>${esc(lv[0])}</b>${T.lang === 'fr' ? ' :' : ':'} ${esc(lv[1])}</p></div></header>`; };
+// The decision bar, at the foot of the screen whatever the scroll (phase 11, G; docs/phase11/ux.md §4.5): the file being
+// read (« 3 / 7 · lib/review.mjs ») with previous and next, the Accepter · Refuser · Relancer of a document being read,
+// and the three verdicts; one of them opens « Terminer la revue » in the bar, its verdict ticked, the focus in the field
+const barFile = () => { const f = order[cur]; if (!f) return ''; const doc = view.get(f.path) === 'rendered';
+  return `<span class="rv-bar-file"><span class="num">${cur + 1} / ${order.length}</span><code>${esc(f.path)}</code></span><button type="button" class="btn ghost" data-step="-1" ${cur ? '' : 'disabled'}>${esc(T('rev.prevFile'))}</button><button type="button" class="btn ghost" data-step="1" ${cur < order.length - 1 ? '' : 'disabled'}>${esc(T('rev.nextFile'))}</button>${doc ? decideBar(f.path, { ...(f.decision || {}), ...(decisions.get(f.path) || {}) }, R.retryMax ?? 2) : ''}`; };
+// A merged session (by the server or outside it): read only, « Fusionnée (commit) » where the verdicts were, nothing that acts
+const mergedLabel = () => T('rev.merged', { commit: String(R.merged.commit || '').slice(0, 7) || '?' });
+const mergedSub = () => [R.merged.into ? T('rev.mergedInto', { into: R.merged.into }) : '', R.merged.by ? T('rev.mergedBy', { by: R.merged.by }) : ''].filter(Boolean).join(' · ');
+const barHtml = () => R.merged ? `<div class="rv-bar" id="rvBar" role="region" aria-label="${esc(T('rev.barAria'))}"><div class="rv-bar-row"><span class="rv-bar-cur" id="rvCur">${barFile()}</span><span class="spacer"></span><span class="pill pos" data-merged>${esc(mergedLabel())}</span><span class="m">${esc(mergedSub())}</span></div></div>` : `<div class="rv-bar" id="rvBar" role="region" aria-label="${esc(T('rev.barAria'))}">${finishPanel()}<div class="rv-bar-row"><span class="rv-bar-cur" id="rvCur">${barFile()}</span><span class="spacer"></span>
+    <button type="button" class="btn" data-verdict="comment" aria-expanded="${finishOpen && verdictPick === 'comment'}" aria-controls="finishPanel">${esc(T('rev.comment'))}</button><button type="button" class="btn" data-verdict="changes" aria-expanded="${finishOpen && verdictPick === 'changes'}" aria-controls="finishPanel">${esc(T('rev.askChanges'))}</button>${R.mergeOnApprove ? `${blockedLine()}<button type="button" class="btn primary" id="finish" data-approve-merge>${esc(T('rev.approveMerge'))}</button>` : `<button type="button" class="btn primary" id="finish" data-verdict="approve" aria-expanded="${finishOpen && verdictPick === 'approve'}" aria-controls="finishPanel">${esc(T('rev.approve'))}</button>`}</div></div>`;
+// Approve and merge (Dev, 6 novembre): a finished session merges on the click; when it cannot, the approve stays and one
+// line next to the button says why and the gesture that unblocks
+const blockedLine = () => { const b = R.mergeBlocked; if (!b) return ''; const s = T('rev.blocked.' + b.kind, { why: b.why }); return `<span class="rv-blocked" id="rvBlocked" role="status" title="${esc(s)}">${esc(s)}</span>`; };
+const afterSubmit = async (verdict, r) => {
+  R.verdict = { verdict, body: '', at: new Date().toISOString() };
+  if (verdict === 'approve' && r.mergeBlocked) { R.mergeBlocked = r.mergeBlocked; render(); $('#stamp').textContent = ''; const f = $('#finish'); if (f) f.focus(); return; }
+  R.mergeBlocked = null; render();
+  const said = verdict === 'approve' ? (r.merged ? T('rev.sentMerged') : T('rev.sentApproved')) : r.sent || R.session ? T('rev.sentTo', { s: R.session || '' }) : T('rev.sent');
+  $('#stamp').textContent = said; await sentBar(verdict, said); };
+const approveMerge = async (btn) => { btn.disabled = true;
+  try { await afterSubmit('approve', await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict: 'approve', body: '' })); } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } };
+// After « Envoyer la revue » (Dev, 2 novembre 02:32: « rien ne s'est passé »): the verdict's badge in the head (render), and
+// the bar becomes the answer: the verdict, what happened, the next review to read (primary, focused) or the way back
+const listHref = () => '/review' + (R.project || R.repo ? '?project=' + encodeURIComponent(R.project || R.repo) : '');
+const sentHtml = (verdict, said, next) => { const v = VERDICTS[verdict] || ['', ''];
+  return `<div class="rv-done" role="status"><span class="pill ${v[1]}">${esc(v[0])}</span><span class="m">${esc(said)}</span><span class="spacer"></span>${next ? `<a class="btn" href="${esc(listHref())}">${esc(T('rev.backList'))}</a><a class="btn primary" id="rvNext" href="/review/${encodeURIComponent(next.id)}${R.project || R.repo ? '?project=' + encodeURIComponent(R.project || R.repo) : ''}">${esc(T('rev.nextReview', { t: next.title || next.head || '' }))}</a>` : `<a class="btn primary" id="rvNext" href="${esc(listHref())}">${esc(T('rev.backList'))}</a>`}</div>`; };
+const nextOf = (list, id) => window.escadrilleProjects.toReview(list).find((x) => x.id !== id) || null;
+const sentBar = async (verdict, said) => { const p = R.project || R.repo; const j = await api('/api/reviews' + (p ? '?project=' + encodeURIComponent(p) : '')).catch(() => null);
+  const bar = $('#rvBar'); if (!bar) return; bar.innerHTML = sentHtml(verdict, said, nextOf(j ? j.reviews || j : [], R.id)); const a = $('#rvNext'); if (a) a.focus(); };
+const drawBar = () => { const c = $('#rvCur'); if (c) c.innerHTML = barFile(); };
+let verdictPick = 'comment';
+const UX = window.escadrilleUX;
+const closeFinish = (focus = true) => { if (!finishOpen) return; finishOpen = false; const p = $('#finishPanel'); if (p) p.hidden = true; for (const b of document.querySelectorAll('[data-verdict]')) b.setAttribute('aria-expanded', 'false');
+  if (UX && p) UX.close(p, { focus: false }); const b = $(`[data-verdict="${verdictPick}"]`); if (focus && b) b.focus(); };
+const openFinish = (verdict, btn) => { verdictPick = verdict; finishOpen = true; const p = $('#finishPanel'); if (!p) return; p.hidden = false; const r = p.querySelector(`input[value="${verdict}"]`); if (r) r.checked = true;
+  for (const b of document.querySelectorAll('[data-verdict]')) b.setAttribute('aria-expanded', String(b === btn));
+  if (UX) UX.open(p, { trigger: btn, close: () => closeFinish(false) }); p.querySelector('textarea').focus(); };
+const finishPanel = () => { const open = (R.comments || []).filter((c) => !c.resolved).length;
+  return `<form class="finish-panel" id="finishPanel" ${finishOpen ? '' : 'hidden'}><h2>${esc(T('rev.finish'))}</h2><textarea name="body" placeholder="${esc(T('rev.leaveShort'))}" aria-label="${esc(T('rev.reviewComment'))}"></textarea>
+    <fieldset><legend>${esc(T('rev.verdict'))}</legend>
+      <label class="radio"><input type="radio" name="verdict" value="comment" ${verdictPick === 'comment' ? 'checked' : ''}><span>${esc(T('rev.comment'))}</span><small>${esc(T('rev.noApprove'))}</small></label>
+      <label class="radio"><input type="radio" name="verdict" value="approve" ${verdictPick === 'approve' ? 'checked' : ''}><span>${esc(T('rev.approve'))}</span><small>${esc(T('rev.canMerge'))}</small></label>
+      <label class="radio"><input type="radio" name="verdict" value="changes" ${verdictPick === 'changes' ? 'checked' : ''}><span>${esc(T('rev.askChanges'))}</span><small>${esc(R.session ? T('rev.toFixSent', { s: R.session }) : T('rev.toFix'))}</small></label></fieldset>
+    <div class="row"><span class="note">${open ? esc(T('rev.openJoined', { n: open })) : ''}</span><button type="submit" class="btn primary">${esc(T('rev.send'))}</button></div></form>`; };
+const calmHtml = () => { const seen = R.files.filter((f) => f.viewed).length, total = R.files.length; const pr = R.prereview;
+  const fl = [...first].map(([p, why]) => `<li><button type="button" class="card-link" data-goto="${idx(fileOf(p))}">${esc(p)}</button><span class="why">${esc(why)}</span></li>`).join('');
+  return `<div class="calm" id="calm"><span class="bar" role="progressbar" aria-label="${esc(T('rev.seenAria'))}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${seen}"><i style="width:${total ? seen / total * 100 : 0}%"></i></span><span class="seen num" id="seen">${esc(T('rev.seenN', { a: seen, b: total }))}</span>
+    ${first.size || pr || delta ? `<details id="first"><summary>${first.size ? T('rev.firstN', { files: T('rev.files', { n: first.size }), d: duration(minutesOf(R.files.filter((f) => first.has(f.path) && !f.viewed))) }) : esc(T('rev.flagged'))}</summary>${first.size && total > first.size ? `<p class="rest">${esc(T('rev.rest', { files: T('rev.files', { n: total - first.size }), d: duration(minutesOf(R.files.filter((f) => !first.has(f.path) && !f.viewed))) }))}</p>` : ''}${fl ? `<ul class="first-list">${fl}</ul>` : ''}${pr && pr.summary ? `<p class="summary">${esc(pr.summary)}</p>` : ''}${delta && delta.summary ? `<p class="arch">${esc(delta.summary)}</p>` : ''}</details>` : ''}</div>`; };
+const render = () => {
+  $('#crumb').textContent = R.plan ? T('rev.crumb', { what: R.session ? T('rev.sessionS', { s: R.session }) : R.plan }) : T('rev.title');
+  $('#canvas').innerHTML = headHtml() + calmHtml()
+    + `<nav class="tabs" aria-label="${esc(T('rev.tabs'))}"><span class="tab" aria-current="page">${esc(T('rev.changedFiles'))} <span class="count num">${R.files.length}</span></span><span class="spacer"></span><label class="split"><input type="checkbox" id="split" ${split ? 'checked' : ''}>${esc(T('rev.split'))}</label></nav>`
+    + (R.files.length ? `<div class="rv-body"><details class="tree" id="tree" ${matchMedia('(max-width: 860px)').matches ? '' : 'open'} aria-label="${esc(T('rev.filesAria'))}">${treeHtml()}</details><div class="diffs" id="diffs">${order.map(fileHtml).join('')}</div></div>` : `<p class="state">${esc(T('rev.noChange'))}</p>`) + barHtml();
+  if (UX && $('#tree')) UX.roving($('#tree'), '.f');
+};
+const redrawFile = (f) => { const el = $(`#f-${idx(f)}`); if (el) el.outerHTML = fileHtml(f); };
+const redrawChrome = () => { const t = $('#treeList'); if (t) { const tmp = document.createElement('div'); tmp.innerHTML = treeHtml(); $('#tree').replaceChild(tmp.querySelector('#treeList'), t); } const c = $('#calm'); if (c) { const open = $('#first') && $('#first').open; c.outerHTML = calmHtml(); if (open) $('#first').open = true; } };
+const setCur = (k, scroll = true) => { cur = Math.max(0, Math.min(order.length - 1, k)); if (big && folded.has(order[cur].path) && !order[cur].viewed) { folded.delete(order[cur].path); redrawFile(order[cur]); } document.querySelectorAll('.file.cur').forEach((e) => e.classList.remove('cur')); const f = order[cur]; const el = $(`#f-${idx(f)}`); if (el) { el.classList.add('cur'); if (scroll) el.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }
+  document.querySelectorAll('.tree .f').forEach((b) => b.setAttribute('aria-current', String(+b.dataset.goto === idx(f)))); drawBar(); };
+// the file being read follows the scroll: the last one whose head passed the upper third of the screen
+let scrollRaf = 0;
+addEventListener('scroll', () => { if (!R || !R.files || scrollRaf) return; scrollRaf = requestAnimationFrame(() => { scrollRaf = 0;
+  let k = -1; for (const el of document.querySelectorAll('.diffs > .file')) { if (el.getBoundingClientRect().top < innerHeight / 3) k = order.indexOf(R.files[+el.dataset.i]); else break; }
+  if (k >= 0 && k !== cur) setCur(k, false); }); }, { passive: true });
+const setViewed = async (f, on) => { f.viewed = on; on ? folded.add(f.path) : folded.delete(f.path); redrawFile(f); redrawChrome();
+  try { await api(`/api/review/${encodeURIComponent(R.id)}/viewed`, { path: f.path, viewed: on }); } catch (e) { $('#stamp').textContent = T('rev.notSaved', { e: e.message }); } };
+const formLayer = {};
+const plusOf = (at) => document.querySelector(`#f-${idx(fileOf(at.path))} .plus[data-side="${at.side}"][data-line="${at.line}"]`); // i18n-ok: a selector
+const closeForm = () => { if (!formAt) return; const at = formAt; formAt = null; if (UX) UX.close(formLayer, { focus: false }); redrawFile(fileOf(at.path)); const p = plusOf(at); if (p) p.focus(); };
+const openForm = (f, side, line) => { const at = { path: f.path, side, line: +line }; if (UX) UX.open(formLayer, { trigger: null, close: () => { formAt = at; closeForm(); } }); formAt = at; folded.delete(f.path); redrawFile(f); const ta = $(`#f-${idx(f)} [data-form] textarea`); if (ta) { ta.focus(); ta.scrollIntoView({ block: 'nearest' }); } };
+
+// ---- events
+document.addEventListener('click', async (e) => { const t = e.target;
+  const sec = t.closest('.file'); const f = sec ? R.files[+sec.dataset.i] : null;
+  const am = t.closest('[data-approve-merge]'); if (am) { approveMerge(am); return; }
+  const vb = t.closest('[data-verdict]'); if (vb) { if (finishOpen && verdictPick === vb.dataset.verdict) closeFinish(); else openFinish(vb.dataset.verdict, vb); return; }
+  if (finishOpen && !t.closest('#finishPanel')) closeFinish(false);
+  const st = t.closest('[data-step]'); if (st) { setCur(cur + Number(st.dataset.step)); const b = $(`[data-step="${st.dataset.step}"]`); if (b && !b.disabled) b.focus(); return; }
+  const go = t.closest('[data-goto]'); if (go) { const k = order.indexOf(R.files[+go.dataset.goto]); const g = order[k]; if (folded.has(g.path) && !g.viewed) { folded.delete(g.path); redrawFile(g); } setCur(k); if (matchMedia('(max-width: 860px)').matches && $('#tree')) $('#tree').open = false; return; }
+  if (t.closest('[data-toggle-view]') && f) { view.get(f.path) === 'rendered' ? view.delete(f.path) : view.set(f.path, 'rendered'); folded.delete(f.path); redrawFile(f); return; }
+  const dc = t.closest('[data-decide]'); if (dc) { const key = dc.closest('.decide').dataset.key; const a = dc.dataset.decide; const d = decisions.get(key) || {};
+    if (a === 'reject') { decisions.set(key, { ...d, editing: true }); redrawDecide(key); const inp = $(`.decide[data-key="${CSS.escape(key)}"] input`); if (inp) inp.focus(); return; }
+    if (a === 'cancel') { decisions.set(key, { ...d, editing: false }); redrawDecide(key); return; }
+    return decide(key, a === 'undo' ? 'reopen' : a); }
+  if (t.closest('[data-fold]') && f) { folded.has(f.path) ? folded.delete(f.path) : folded.add(f.path); redrawFile(f); return; }
+  if (t.closest('[data-load]') && f) { if (!f.hunks) { try { Object.assign(f, await api(`/api/review/${encodeURIComponent(R.id)}/file?path=${encodeURIComponent(f.path)}`)); } catch (err) { $('#stamp').textContent = T('rev.diffNot', { e: err.message }); return; } } loaded.add(f.path); redrawFile(f); return; }
+  const plus = t.closest('.plus'); if (plus && f) { openForm(f, plus.dataset.side, plus.dataset.line); return; }
+  if (t.closest('[data-cancel]') && f) { closeForm(); return; }
+  const rs = t.closest('[data-resolve]'); if (rs) { const c = R.comments.find((x) => x.id === +rs.dataset.resolve); try { await api(`/api/review/${encodeURIComponent(R.id)}/comment/${c.id}/resolve`, {}); c.resolved = true; redrawFile(fileOf(c.path)); } catch (err) { $('#stamp').textContent = err.message; } return; }
+});
+document.addEventListener('change', (e) => { const t = e.target;
+  if (t.matches('[data-viewed]')) { const f = R.files[+t.closest('.file').dataset.i]; setViewed(f, t.checked); }
+  if (t.id === 'split') { split = t.checked; localStorage.setItem('review.split', split ? '1' : '0'); order.forEach((f) => { if (!folded.has(f.path)) redrawFile(f); }); }
+});
+document.addEventListener('input', (e) => { if (e.target.id === 'filter') { filter = e.target.value.trim().toLowerCase(); const list = $('#treeList'); const tmp = document.createElement('div'); tmp.innerHTML = treeHtml(); list.replaceWith(tmp.querySelector('#treeList')); } });
+// one decision: on a file of this review ({ path }) or on an item of the queue (its own id). POST /api/review/:id/decide
+const qitems = new Map();
+const decide = async (key, action, reason = '') => { const item = qitems.get(key); const id = item ? item.id : R.id;
+  try { const r = await api(`/api/review/${encodeURIComponent(id)}/decide`, item ? { action, reason } : { path: key, action, reason });
+    const d = decisions.get(key) || {}; const retries = r.retries ?? (action === 'retry' ? (d.retries || (item && item.retries) || 0) + 1 : d.retries);
+    decisions.set(key, { decision: action === 'retry' || action === 'reopen' ? null : action, reason, retries, editing: false }); redrawDecide(key);
+    $('#stamp').textContent = action === 'reject' ? T('rev.refusalSent') : action === 'retry' ? T('rev.retrySent') : action === 'accept' ? T('rev.acceptedDot') : '';
+  } catch (err) { $('#stamp').textContent = T('rev.decisionNot', { e: err.message }); } };
+const redrawDecide = (key) => { drawBar(); const el = $(`.diffs .decide[data-key="${CSS.escape(key)}"], .queue .decide[data-key="${CSS.escape(key)}"]`); if (!el) return; const item = qitems.get(key);
+  const base = item ? { retries: item.retries, decision: item.decision } : (fileOf(key) && fileOf(key).decision) || {};
+  el.outerHTML = decideBar(key, { ...base, ...(decisions.get(key) || {}) }, item ? item.retryMax ?? 2 : R.retryMax ?? 2); };
+document.addEventListener('submit', async (e) => { e.preventDefault(); const fm = e.target;
+  if (fm.matches('[data-reason]')) { const key = fm.closest('.decide').dataset.key; const reason = fm.reason.value.trim(); if (reason) decide(key, 'reject', reason); return; }
+  if (fm.matches('[data-form]')) { const f = R.files[+fm.closest('.file').dataset.i]; const body = fm.body.value.trim(); if (!body) return; const btn = fm.querySelector('[type=submit]'); btn.disabled = true;
+    try { const r = await api(`/api/review/${encodeURIComponent(R.id)}/comment`, { path: f.path, side: formAt.side, line: formAt.line, body }); R.comments.push(r.comment || { id: Date.now(), path: f.path, side: formAt.side, line: formAt.line, body, author: 'dev', at: new Date().toISOString() }); closeForm(); } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.commentNot', { e: err.message }); } return; }
+  if (fm.id === 'finishPanel') { const verdict = fm.verdict.value, body = fm.body.value.trim();
+    if (verdict !== 'approve' && !body) { fm.body.placeholder = 'Un mot requis'; fm.body.focus(); return; } const btn = fm.querySelector('[type=submit]'); btn.disabled = true;
+    try { const r = await api(`/api/review/${encodeURIComponent(R.id)}/submit`, { verdict, body }); closeFinish(false); await afterSubmit(verdict, r); R.verdict.body = body; } catch (err) { btn.disabled = false; $('#stamp').textContent = T('rev.notSent', { e: err.message }); } }
+});
+// on touch, a tap on a line shows its « + » (no hover there)
+document.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; const c = e.target.closest('table.diff td.c'); if (!c || e.target.closest('.plus')) return;
+  document.querySelectorAll('table.diff .tap').forEach((x) => x.classList.remove('tap')); (c.closest('tr[data-line]') || c).classList.add('tap'); });
+document.addEventListener('mouseover', (e) => { const tr = e.target.closest('table.diff tr[data-line], table.diff td.c'); if (tr) hoverRow = tr; });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { if (finishOpen) closeFinish(); else if (formAt) closeForm(); return; }
+  if (!R || e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+  if (e.key === 'j' || e.key === 'k') { e.preventDefault(); setCur(cur + (e.key === 'j' ? 1 : -1)); }
+  else if (e.key === 'v') { e.preventDefault(); const f = order[cur]; setViewed(f, !f.viewed); if (f.viewed) setCur(cur + 1); }
+  else if (e.key === 'c') { e.preventDefault(); const btn = hoverRow && hoverRow.querySelector('.plus');
+    if (btn) { const f = R.files[+btn.closest('.file').dataset.i]; return openForm(f, btn.dataset.side, btn.dataset.line); }
+    const f = order[cur]; const l = (f.hunks || []).flatMap((h) => h.lines).find((x) => x.kind !== 'ctx'); if (l) { const [side, line] = anchorOf(l); openForm(f, side, line); } }
+});
+if (UX) UX.keys([[['↑', '↓'], T('rev.kTree')], [['j', 'k'], T('rev.kFile')], [['v'], T('rev.kViewed')], [['c'], T('rev.kComment')]]);
+load();
+escadrilleI18n.onChange(() => load()); // the pre-review's texts come from the server
+</script>
+<script src="/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>calmdev</title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* The project's flow (docs/projectflow.md, docs/phase9/direction.md §5 and §6): every session of the plans in flight
+   on one canvas (public/canvas.js), one frame per plan from left to right (the oldest first: plan ids begin with their date; the server sorts by activity), one row per wave; the
+   plans finished folded under it.
+   Head: the title, the three figures, the sentence, the measure. Tools: the filter (only when something waits; the
+   keys are in the « ? » help, docs/phase11/ux.md §4.3). The canvas takes
+   the height left in the window (560 px at least) and is never compressed: it moves and zooms. */
+.title-row { align-items: flex-start; margin-bottom: 16px; }
+.title-row .sub { font-variant-numeric: tabular-nums; }
+.story { margin-top: 6px; color: var(--muted); font-size: var(--fs-small); line-height: 18px; max-width: 900px; }
+.story:empty { display: none; }
+.story .more { border: 0; background: none; padding: 0; font: inherit; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; margin-left: 6px; }
+.story .more:hover { color: var(--text); }
+/* the measure (docs/mesure.md): one folded 13 px line in grey, the three figures in it; open, each figure's definition
+   (Dev, 2026-11-02: the measure folds to one line, no tint on it; the canvas gets the height) */
+.measure { margin-top: 4px; color: var(--faint); font-size: var(--fs-small); line-height: 18px; font-variant-numeric: tabular-nums; }
+.measure:empty { display: none; }
+.measure > summary { display: inline-flex; color: var(--faint); font-weight: 400; font-size: inherit; }
+.measure > summary:hover { color: var(--text); }
+@media (max-width: 640px) { .measure > summary, .measure-line summary { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } } /* one line at 390, the detail on a click */
+.measure > summary b { font-weight: 500; color: var(--muted); }
+.measure > div { display: grid; gap: 2px; padding: 4px 0 0 12px; }
+.measure-line summary { cursor: pointer; list-style: none; display: inline; color: var(--faint); font-weight: 400; font-size: inherit; }
+.measure-line summary b { color: var(--text); font-weight: 500; }
+.measure-line summary::-webkit-details-marker, .measure-line summary::before { display: none; }
+.measure-line summary:hover { color: var(--text); }
+.measure-line p { margin: 2px 0 6px; color: var(--muted); max-width: 520px; }
+.tools { position: relative; display: flex; align-items: center; gap: 12px; flex: none; } /* at the right of the title: it takes no height from the canvas */
+.tools .btn[aria-pressed="true"] { background: var(--pill-wait-bg); color: var(--pill-wait-ink); border-color: transparent; }
+/* the plans, in a menu at the right of the title (Dev, 2026-11-02: never under the canvas, which takes the whole screen):
+   the button says their count; open, the plans in flight then the plans finished, one grey line each, in a panel that
+   floats over the canvas (the one shadow of the screen, like the project picker) */
+.plans-menu > summary { color: var(--text); font-size: var(--fs-body); }
+.plans-menu > summary::before { display: none; }
+.plans-menu > summary::after { content: ""; width: 12px; height: 12px; margin: 0 -2px 0 2px; background: var(--chevron) no-repeat center; }
+.plans-panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 6; width: min(520px, calc(100vw - 32px)); max-height: min(60svh, 560px); overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 28px rgba(15, 18, 22, .16); }
+.plans-panel h2 { margin: 6px 8px 2px; font-size: var(--fs-small); font-weight: 500; color: var(--faint); }
+.plans-panel .folded { margin: 0; }
+.plans-panel .folded a { padding: 0 8px; border-radius: 6px; line-height: 32px; color: var(--text); gap: 12px; justify-content: space-between; }
+.plans-panel .folded a:hover, .plans-panel .folded a:focus-visible { background: var(--active); color: var(--text); }
+.plans-panel .folded a .f { color: var(--faint); }
+/* the board fills the sheet to its foot */
+.sheet { display: flex; flex-direction: column; }
+.canvas { flex: 1; display: flex; flex-direction: column; }
+.board { flex: 1 1 auto; min-height: 560px; }
+.board.empty { flex: none; min-height: 240px; height: 240px; }
+.board[hidden], .tools[hidden] { display: none; }
+.board.with-side .cv-ctl { right: 372px; }
+/* the panel: what the clicked node is doing (direction.md §5 : 360 px, Échap ferme) */
+.panel-side { position: absolute; top: 0; right: 0; bottom: 0; width: 360px; max-width: 100%; z-index: 3; background: var(--surface); border-left: 1px solid var(--border); padding: 20px; overflow: auto; display: grid; align-content: start; gap: 16px; cursor: auto; user-select: text; -webkit-user-select: text; }
+.panel-side[hidden] { display: none; }
+.panel-side header { display: flex; align-items: flex-start; gap: 10px; }
+.panel-side .badge { flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--raised); display: grid; place-items: center; font-weight: 500; }
+.panel-side h2 { font-size: var(--fs-section); font-weight: 600; line-height: 20px; }
+.panel-side .sub { color: var(--muted); font-size: var(--fs-small); }
+.panel-side .close { margin-left: auto; }
+.panel-side h3 { font-size: var(--fs-small); font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+.panel-side p { line-height: 21px; overflow-wrap: anywhere; }
+.panel-side .one, .panel-side li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-side ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.panel-side li.ok { color: var(--muted); } .panel-side li.ok::marker { color: var(--positive); }
+.panel-side .figs { display: flex; gap: 20px; font-variant-numeric: tabular-nums; }
+.panel-side .figs b { display: block; font-size: 18px; font-weight: 600; }
+.panel-side .figs span { color: var(--muted); font-size: var(--fs-small); }
+.panel-side .links { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill.running { background: var(--accent-tint); color: var(--accent); } .pill.waiting, .pill.mine { background: var(--pill-wait-bg); color: var(--pill-wait-ink); }
+.pill.paused { background: var(--pill-neutral-bg); color: var(--pill-neutral-ink); }
+/* the pause at a hard threshold (lib/limits.mjs): one line under the figures, its one action beside it */
+.flow-pause { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--pill-wait-ink); font-size: var(--fs-small); line-height: 18px; font-variant-numeric: tabular-nums; }
+.flow-pause[hidden] { display: none; }
+.pill.error { background: var(--pill-negative-bg); color: var(--pill-negative-ink); } .pill.done, .pill.merged { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+/* the plans in flight and the plans finished, one grey line each (in the menu) */
+.folded { display: grid; gap: 2px; }
+.folded:empty { display: none; }
+.folded a { display: flex; gap: 8px; color: var(--faint); font-size: var(--fs-small); line-height: 24px; min-width: 0; }
+.folded a:hover { color: var(--muted); }
+.folded a .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.folded a .f { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* the phone: the canvas is the picture, the list under it is the navigation */
+.list { display: none; }
+.list section { margin-top: 20px; }
+.list h2 { font-size: var(--fs-section); font-weight: 600; margin-bottom: 2px; }
+.list .pm { color: var(--muted); font-size: var(--fs-small); margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.list button.row { display: grid; grid-template-columns: minmax(28px, max-content) minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; width: 100%; padding: 10px 0; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--rule); font: inherit; color: inherit; cursor: pointer; }
+.list .row .l { min-width: 28px; width: auto; padding: 0 5px; height: 28px; box-sizing: border-box; border-radius: 7px; background: var(--raised); display: grid; place-items: center; font-weight: 500; font-size: 13px; font-family: var(--mono); }
+.list .row.mine .l { background: var(--pill-wait-bg); color: var(--pill-wait-ink); }
+/* a running row, told without hover at 390 (Dev, 2026-11-06): the accent edge and the dot; its line already says what it does */
+.list .row.run { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; } .list .row.run .l { background: var(--accent-tint); color: var(--accent); }
+.list .row.run .w { color: var(--text); }
+.runs-pill { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--accent-tint); color: var(--accent); font-size: 12.5px; font-weight: 500; vertical-align: middle; }
+.runs-pill .live-pulse { width: 6px; height: 6px; }
+.list .row.end .l { background: none; color: var(--muted); } .list .row.end .n { font-weight: 500; color: var(--muted); } .list .row.end.mine .n { color: var(--text); }
+.list .row .n { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .row .c { font-variant-numeric: tabular-nums; font-size: var(--fs-small); font-family: var(--mono); }
+.list .row .w { grid-column: 2 / -1; color: var(--muted); font-size: var(--fs-small); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 860px) {
+  .board { flex: none; min-height: 0; height: 420px; } .list { display: block; }
+  .board.with-side .cv-ctl { right: 12px; }
+  .panel-side { position: fixed; top: auto; left: 0; height: 72svh; width: 100%; border-left: 0; border-top: 1px solid var(--border); border-radius: 16px 16px 0 0; z-index: 30; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb" data-i18n="flow.title"></b></span><span class="spacer"></span><span class="stamp" id="stamp"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 id="title" data-i18n="flow.title"></h1><p class="sub" id="totals"></p><p class="flow-pause" id="pauseLine" role="status" hidden></p><p class="story" id="story"></p><details class="measure" id="measure" data-i18n-attr="aria-label:flow.measureAria"></details></div><div class="tools" id="tools" hidden><button type="button" class="btn" id="mine" aria-pressed="false" hidden></button><details class="plans-menu" id="plansMenu"><summary class="btn" id="plansSummary"></summary><div class="plans-panel"><h2 id="plansNowH"></h2><div class="folded plans-now" id="plansNow"></div><h2 id="foldedH"></h2><div class="folded" id="folded"></div></div></details></div></div>
+      <div class="board" id="board" data-i18n-attr="aria-label:flow.boardAria"><aside class="panel-side" id="side" hidden aria-live="polite" data-cv-static></aside></div>
+      <div class="list" id="list"></div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script src="/measure.js"></script>
+<script src="/canvas.js"></script>
+<script>
+const P = window.escadrilleProjects;
+const MODEL_NAMES = { 'claude-fable-5-1': 'Fable 5.1', 'claude-opus-5-5': 'Opus 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-5-5': 'Haiku 5.5' };
+const keyed = (prefix, ids) => new Proxy({}, { get: (o, k) => (ids.includes(k) ? T(prefix + k) : undefined) });
+const STATUS = keyed('flow.st.', ['todo', 'later', 'running', 'waiting', 'paused', 'done', 'merged', 'error']);
+const WAIT = keyed('flow.w.', ['dev', 'permission', 'review', 'pilot', 'merge']);
+const MINE = new Set(['dev', 'permission', 'review', 'merge']); // lib/projectflow.mjs MINE: what the developer alone does
+const NB = ' ';
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const usd = (c) => Number.isFinite(c) ? T.usd(c, c >= 100 || Number.isInteger(c) ? 0 : 2) : '–';
+const pct = (x) => Number.isFinite(x) ? Math.round(x * 100) + NB + '%' : '–';
+const cut = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+const hm = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : T.time(d); };
+// an hour when it is today-ish (under 20 h away), else the day and the hour
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : Math.abs(d - Date.now()) < 20 * 36e5 ? T.time(d) : T.dateTime(d); };
+// the ETA of a card or a phase (lib/eta.mjs): « vers 11:40 », the range and its basis on hover; « — » without history
+const etaText = (e) => (!e ? '' : e.late ? T('flow.etaLate') : T('flow.etaAt', { t: when(e.at) }));
+const etaTip = (e) => (!e ? T('flow.etaNone') : [T('flow.etaRange', { a: when(e.low), b: when(e.high) }), e.n ? T('flow.etaFrom', { n: e.n, basis: T('flow.basis.' + e.basis) }) : ''].filter(Boolean).join(' · '));
+const youOf = (verb) => (verb ? T('flow.youVerb', { verb: T('flow.v.' + verb) }) : '');
+const shortTitle = (t) => cut(String(t || '').split(/\s*[:—–(·]\s*/)[0], 40);
+const plural = (n) => T('main.sessionsN', { n });
+const project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || '';
+window.escadrilleSidebar.render(document.getElementById('sidebar'), { project: project || null });
+const showAll = new URLSearchParams(location.search).get('all') === '1';
+let data = null; let sel = null; let onlyMine = false; let storyOpen = false; let metrics = null; let claude = null; // claude: the account's limits (GET /api/status), the one source of the quota shown
+const board = document.getElementById('board');
+const planHref = (id) => P.withProject('/plan/' + encodeURIComponent(id), data ? data.project : project);
+// the session's thread: its tab in the plan (the plan falls back to its flow, the node open, when it has not left yet)
+const threadHref = (n) => { const t = planHref(n.plan); return t + (t.includes('?') ? '&' : '?') + 'node=' + encodeURIComponent(n.session) + '&tab=' + encodeURIComponent(n.session) + '#flow'; };
+
+// ---- the canvas: the nodes of /api/projectflow mapped to what canvas.js draws
+const isMine = (n) => MINE.has(n.waitingFor) && n.status !== 'merged';
+const stateOf = (n) => (n.waitingFor && n.status !== 'merged' ? WAIT[n.waitingFor] : STATUS[n.status] || n.status);
+// a running card shows what it does now (its last activity, node.now) in place of « en cours » (Dev, 2026-11-06)
+const liveOf = (n) => (!isMine(n) && n.status === 'running' ? (n.now ? T.decode(n.now) : stateOf(n)) : stateOf(n));
+const runsOf = (id) => { const k = data.nodes.filter((n) => n.plan === id && n.status === 'running').length; return k ? T('live.planRuns', { n: k }) : ''; };
+const toneOf = (n) => (isMine(n) ? 'wait' : n.status === 'running' ? 'run' : n.status === 'done' || n.status === 'merged' ? 'done' : n.status === 'error' ? 'err' : n.status === 'waiting' ? 'wait' : '');
+// the end node of a plan (lib/projectflow.mjs endOf): its title by kind, its second line by state
+const endOf = (id) => (data && data.ends ? data.ends.find((e) => e.id === id) : null);
+const endTitle = (e) => (e.kind === 'next' && e.next ? T('flow.end.next', { title: shortTitle(e.next.title) }) : T('flow.end.' + (e.kind === 'next' ? 'none' : e.kind)));
+const endSub = (e) => (e.waitingFor ? T('flow.end.click') : e.kind === 'next' && e.next && e.next.status === 'merged' ? T('flow.end.merged') : e.kind === 'next' && e.next && e.next.status !== 'todo' ? T('flow.end.started') : e.ready ? '' : e.open ? T('flow.end.beforeN', { n: e.open }) : T('flow.end.whenMerged', { a: e.merged, n: e.total }));
+const endMine = (e) => !!e.waitingFor;
+const graphOf = () => ({
+  plans: [...data.plans].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((p) => ({ id: p.id, title: p.title, href: planHref(p.id), waiting: data.nodes.some((n) => n.plan === p.id && isMine(n)), runs: runsOf(p.id),
+    sub: `${T('flow.ofUsd', { a: usd(p.cost), b: usd(p.budget) })} · ${T('flow.ofMerged', { a: p.main.merged, n: p.main.total })}${p.eta ? ' · ' + etaText(p.eta) : ''}` })),
+  nodes: data.nodes.map((n) => ({ id: n.id, plan: n.plan, letter: cut(n.session, 10), name: n.name, wave: n.wave, state: liveOf(n), cost: `${usd(n.cost)} / ${usd(n.budget)}`,
+    frac: n.budget ? n.cost / n.budget : 0, tone: toneOf(n), mine: isMine(n), you: isMine(n) ? youOf(n.verb) : '', eta: etaText(n.eta), etaTip: n.eta ? etaTip(n.eta) : '', faded: onlyMine && !isMine(n),
+    label: `${n.session}, ${n.name}, ${isMine(n) ? youOf(n.verb) : liveOf(n)}, ${T('flow.ofUsd', { a: usd(n.cost), b: usd(n.budget) })}${n.eta ? ', ' + etaText(n.eta) : ''}` })),
+  edges: data.edges.map((e) => ({ from: e.from, to: e.to, kind: e.kind, met: e.met })),
+  ends: (data.ends || []).map((e) => ({ id: e.id, plan: e.plan, title: endTitle(e), sub: endSub(e), mine: endMine(e), you: endMine(e) ? youOf(e.verb) : '', tone: endMine(e) ? 'wait' : e.ready ? 'done' : '', eta: e.ready ? '' : etaText(e.eta), etaTip: e.ready || !e.eta ? '' : etaTip(e.eta), faded: onlyMine && !endMine(e) })),
+});
+// the screen's keys (the « ? » help) and its Échap: the panel first, then what ux.js or the fallback closes
+const keys = () => [...EscadrilleCanvas.canvasKeys(), ...EscadrilleCanvas.commonKeys()];
+const ui = EscadrilleCanvas.screen({ keys, escape: () => { const a = document.activeElement; if (a && a.closest && a.closest('details[open], [aria-expanded="true"]:not(.cv-node)')) return false; if (!sel) return false; closePanel(); return true; } });
+const cv = EscadrilleCanvas.mount(board, { key: 'flow:' + project, help: ui.help, onSelect: (id) => pick(id, true), onAct: (id) => act(id), onOpen: (id) => { const n = data && data.nodes.find((x) => x.id === id); if (n) location.href = threadHref(n); else if (endOf(id)) { pick(id, true); } } });
+// ---- the gesture of a card: judge, reply or allow in its thread; merge here; launch the next plan here (nothing starts without this click)
+const notes = {}; // id → the last error of a gesture, shown in the panel
+const act = async (id) => {
+  const n = data && data.nodes.find((x) => x.id === id); const e = endOf(id);
+  if (n && n.verb === 'merge') { notes[id] = T('flow.merging'); pick(id); const r = await fetch(`/api/plan/${encodeURIComponent(n.plan)}/session/${encodeURIComponent(n.session)}/merge`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then((x) => x.json()).catch((err) => ({ error: err.message }));
+    notes[id] = r.conflict ? T('flow.mergeConflict', { files: (r.files || []).join(', ') }) : r.error ? T('flow.mergeFailed', { e: r.error }) : ''; load(); return; }
+  if (n) { location.href = threadHref(n); return; }
+  if (e && e.verb === 'launch' && e.next) { notes[id] = T('flow.end.launching'); pick(id); const r = await fetch('/api/launch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan: e.next.id }) }).then((x) => x.json()).catch((err) => ({ error: err.message }));
+    notes[id] = r.error ? T('flow.end.launchFailed', { e: r.error }) : ''; load(); return; }
+  if (e) pick(id);
+};
+
+// ---- the head: the figures, the sentence, the measure; under the canvas the plans; the phone's list
+let pnFor = null; // the project the sidebar was drawn for
+// a render (a click, the live stream) keeps the focus on the twin of the focused element: × of the panel, « le détail »
+const render = () => EscadrilleCanvas.keepFocus(document, draw);
+const draw = () => {
+  const t = data.totals; const name = P.name(data.project);
+  document.title = T('flow.docTitle', { name });
+  // the quota is the one the status panel shows (/api/status, claude.weekly, never a reading from before the last reset);
+  // the arrow adds what the plans still have to spend, as the estimate projects it (its base may differ, its delta holds)
+  const qNow = claude && claude.weekly && Number.isFinite(claude.weekly.pct) ? claude.weekly.pct / 100 : null;
+  const qAfter = qNow != null && t.weeklyNow != null && t.weeklyAfter != null ? qNow + (t.weeklyAfter - t.weeklyNow) : null;
+  document.getElementById('totals').innerHTML = `<b>${t.running}</b> ${esc(T('flow.running'))} · <b>${t.waiting}</b> ${esc(T('flow.waiting', { n: t.waiting }))} · <b>${esc(usd(t.cost))}</b> ${esc(T('flow.ofBudget', { b: usd(t.budget) }))}${qNow != null ? ` · ${esc(T('flow.quota'))} <b>${esc(pct(qNow))}</b>${qAfter != null && Math.round(qAfter * 100) > Math.round(qNow * 100) ? ` → ${esc(pct(qAfter))}` : ''}` : ''}`;
+  // the pause (lib/limits.mjs): which limit, until when, and « Tout reprendre »
+  const pz = data.pause; const pl = document.getElementById('pauseLine'); pl.hidden = !pz;
+  pl.innerHTML = pz ? `<span>${esc(T(pz.until ? 'flow.pause' : 'flow.pauseOpen', { n: pz.n, name: pz.name, t: pz.until ? (new Date(pz.until) - Date.now() < 20 * 36e5 ? T.time(pz.until) : T.dateTime(pz.until)) : '' }))}</span><button type="button" class="btn" id="resumeAll">${esc(pz.sessions?.length ? T('flow.resumeN', { n: pz.sessions.length, names: pz.sessions.map((s) => s.name).join(', ') }) : T('flow.resumeAll'))}</button>` : ''; // the button says how many it resumes, and which
+  document.getElementById('story').innerHTML = data.plans.length ? esc(storyOpen ? data.storyFull : data.story) + (data.storyFull !== data.story ? ` <button type="button" class="more" id="more" aria-expanded="${storyOpen}">${esc(T(storyOpen ? 'flow.less' : 'flow.detail'))}</button>` : '') : '';
+  // the measure: one folded line of the three figures; open, their definitions (measure.js)
+  const ml = window.Measure && metrics ? Measure.lines(metrics) : ''; const me = document.getElementById('measure'); const wasOpen = me.open;
+  me.innerHTML = ml ? `<summary>${[...ml.matchAll(/<summary>(.*?)<\/summary>/g)].map((m) => m[1]).join(' · ')}</summary><div>${ml}</div>` : ''; me.open = !!ml && wasOpen;
+  // the plans, in the menu: in flight, then finished
+  document.getElementById('plansSummary').textContent = T('flow.plansN', { n: data.plans.length + data.folded.length });
+  document.getElementById('plansNowH').textContent = data.plans.length ? T('flow.plansRunning', { n: data.plans.length }) : ''; document.getElementById('foldedH').textContent = data.folded.length ? T('flow.plansFinished', { n: data.folded.length }) : '';
+  document.getElementById('plansNow').innerHTML = data.plans.map((p) => `<a href="${esc(planHref(p.id))}"><span class="t">${esc(p.title)}</span><span class="f">${esc(T('flow.ofMerged', { a: p.main.merged, n: p.main.total }))} · ${esc(usd(p.cost))}</span></a>`).join('');
+  document.getElementById('folded').innerHTML = data.folded.map((p) => `<a href="${esc(planHref(p.id))}"><span class="t">${esc(p.title)}</span><span class="f">${esc(plural(p.sessions))} · ${esc(usd(p.cost))}</span></a>`).join('');
+  // the filter has no object at 0: it is not shown (docs/phase11/ux.md, cause F)
+  const mb = document.getElementById('mine'); mb.textContent = T('flow.mineN', { n: t.mine }); mb.hidden = !t.mine && !onlyMine; mb.setAttribute('aria-pressed', String(onlyMine));
+  document.getElementById('list').innerHTML = data.plans.map((p) => `<section><h2>${esc(shortTitle(p.title))}${runsOf(p.id) ? ` <span class="runs-pill"><span class="live-pulse" aria-hidden="true"></span>${esc(runsOf(p.id))}</span>` : ''}</h2><p class="pm">${esc(T('flow.ofUsd', { a: usd(p.cost), b: usd(p.budget) }))} · ${esc(T('flow.ofMerged', { a: p.main.merged, n: p.main.total }))}</p>${data.nodes.filter((n) => n.plan === p.id && (!onlyMine || isMine(n))).map((n) => `<button type="button" class="row ${isMine(n) ? 'mine' : toneOf(n) === 'run' ? 'run' : ''}" data-id="${esc(n.id)}"><span class="l">${esc(n.session)}</span><span class="n">${esc(n.name)}</span><span class="c">${esc(usd(n.cost))}</span><span class="w">${esc(isMine(n) ? youOf(n.verb) : stateOf(n))}${n.eta ? ' · ' + esc(etaText(n.eta)) : ''}${n.now ? ' · ' + esc(T.decode(n.now)) : ''}</span></button>`).join('')}${(data.ends || []).filter((e) => e.plan === p.id && (!onlyMine || endMine(e))).map((e) => `<button type="button" class="row end ${endMine(e) ? 'mine' : ''}" data-id="${esc(e.id)}"><span class="l">→</span><span class="n">${esc(endTitle(e))}</span><span class="c"></span><span class="w">${esc(endMine(e) ? youOf(e.verb) : endSub(e))}${!e.ready && e.eta ? ' · ' + esc(etaText(e.eta)) : ''}</span></button>`).join('')}</section>`).join('');
+  if (pnFor !== data.project) { pnFor = data.project; window.escadrilleSidebar.render(document.getElementById('sidebar'), { project: data.project }); }
+  document.getElementById('stamp').textContent = T('flow.updated', { t: hm(new Date().toISOString()) });
+  document.getElementById('tools').hidden = !data.plans.length && !data.folded.length;
+  cv.setData(graphOf(), { empty: `${esc(T('flow.empty'))} <a href="${esc(P.withProject('/', data.project))}">${esc(T('nav.conversation'))}</a>` });
+  side();
+};
+
+// ---- the panel of the clicked node
+// the gesture button of a card: judge, reply and allow go to the thread; merge is done here (the one action of the panel)
+const actBtn = (n) => (!isMine(n) ? '' : n.verb === 'merge' ? `<button type="button" class="btn primary" data-act="${esc(n.id)}">${esc(T('flow.v.merge'))}</button>` : `<a class="btn primary" href="${esc(threadHref(n))}">${esc(T('flow.v.' + n.verb))}</a>`);
+const sideEnd = (el, e) => { const p = data.plans.find((x) => x.id === e.plan);
+  el.innerHTML = `<header><span class="badge">→</span><div><h2>${esc(endTitle(e))}</h2><p class="sub">${esc(shortTitle(p?.title))} · ${esc(T('canvas.endRow'))}</p></div><button type="button" class="btn ghost close" data-close aria-label="${esc(T('flow.close'))}">×</button></header>
+    <div><span class="pill ${endMine(e) ? 'waiting mine' : e.ready ? 'merged' : 'running'}">${esc(endMine(e) ? youOf(e.verb) : endSub(e) || T('flow.ofMerged', { a: e.merged, n: e.total }))}</span></div>
+    ${!e.ready && e.eta ? `<div class="figs"><div><b>${esc(when(e.eta.at))}</b><span>${esc(T('flow.eta'))} · ${esc(etaTip(e.eta))}</span></div></div>` : ''}
+    ${notes[e.id] ? `<p class="sub">${esc(notes[e.id])}</p>` : ''}
+    <div class="links">${e.verb === 'launch' && e.next ? `<button type="button" class="btn primary" data-act="${esc(e.id)}">${esc(T('flow.end.launch', { title: shortTitle(e.next.title) }))}</button>` : ''}${e.next ? `<a class="btn${e.verb === 'launch' ? '' : ' primary'}" href="${esc(planHref(e.next.id))}">${esc(T('flow.end.open'))}</a>` : ''}</div>`; };
+const side = () => { const el = document.getElementById('side'); const n = sel && data && data.nodes.find((x) => x.id === sel); const e = !n && sel ? endOf(sel) : null; el.hidden = !n && !e; board.classList.toggle('with-side', !!(n || e)); cv.setInset({ right: (n || e) && matchMedia('(min-width: 861px)').matches ? 360 : 0 }); if (e) return sideEnd(el, e); if (!n) return;
+  const p = data.plans.find((x) => x.id === n.plan); const thread = threadHref(n);
+  const [done, left] = String(n.summary || '').split('\n');
+  el.innerHTML = `<header><span class="badge">${esc(n.session)}</span><div><h2>${esc(n.name)}</h2><p class="sub">${esc(shortTitle(p?.title))} · ${esc(T('flow.wave', { n: n.wave }))} · ${esc(MODEL_NAMES[n.model] || n.model || '')}</p></div><button type="button" class="btn ghost close" data-close aria-label="${esc(T('flow.close'))}">×</button></header>
+    <div><span class="pill ${n.status} ${isMine(n) ? 'mine' : ''}">${esc(isMine(n) ? youOf(n.verb) : stateOf(n))}</span>${notes[n.id] ? ` <span class="sub">${esc(notes[n.id])}</span>` : ''}</div>
+    ${n.now ? `<div><h3>${esc(T('flow.now'))}</h3><p class="one" data-tip="${esc(T.decode(n.now))}">${esc(T.decode(n.now))}</p></div>` : ''}
+    ${done ? `<p class="one" title="${esc(done)}">${esc(done)}</p>` : ''}${left ? `<p class="one" title="${esc(left)}">${esc(left)}</p>` : ''}
+    ${n.stops.length ? `<div><h3>${esc(T('flow.stops', { a: n.stopsDone, b: n.stopsTotal }))}</h3><ol>${n.stops.map((s, i) => `<li class="${i < n.stopsDone ? 'ok' : ''}" title="${esc(s)}">${esc(s)}</li>`).join('')}</ol></div>` : ''}
+    <div class="figs"><div><b>${esc(usd(n.cost))}</b><span>${esc(T('flow.ofBudget', { b: usd(n.budget) }))}</span></div>${n.contextPct != null ? `<div><b>${esc(pct(n.contextPct))}</b><span>${esc(T('flow.ofContext'))}</span></div>` : ''}${n.startedAt ? `<div><b>${esc(hm(n.startedAt))}</b><span>${esc(T('flow.start'))}</span></div>` : ''}${n.eta ? `<div><b>${esc(n.eta.late ? T('flow.etaLate') : when(n.eta.at))}</b><span>${esc(T('flow.eta'))}</span></div>` : ''}</div>
+    ${n.eta ? `<p class="sub">${esc(etaTip(n.eta))}</p>` : ''}
+    ${n.after.length ? `<p class="sub">${esc(T('flow.after', { list: n.after.join(', ') }))}</p>` : ''}
+    <div class="links">${actBtn(n)}<a class="btn${isMine(n) ? '' : ' primary'}" href="${esc(thread)}">${esc(T('flow.openThread'))}</a>${n.status === 'done' || n.status === 'merged' ? `<a class="btn" href="${esc(thread + '#sessions')}">${esc(T('flow.review'))}</a>` : ''}</div>`; };
+
+// ---- interactions: a pick (canvas, list, ?node=), the filter, the sentence
+let opener = null; // the phone's list row that opened the panel: the focus goes back to it
+const pick = (id, fromCanvas) => { sel = id || null; const u = new URL(location); if (sel) u.searchParams.set('node', sel); else u.searchParams.delete('node'); history.replaceState(null, '', u); side(); if (!fromCanvas) cv.setSelected(sel); else if (sel) cv.reveal(sel); };
+// × or Échap: the panel closes and the focus goes back to what opened it (the node, or the list row on the phone)
+const closePanel = () => { const from = opener; opener = null; if (from) { pick(null); const el = document.querySelector(from); if (el) el.focus({ preventScroll: true }); } else if (!cv.close()) pick(null); };
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.list [data-id]'); if (row) { opener = EscadrilleCanvas.identity(row); return pick(row.dataset.id); }
+  if (e.target.closest('[data-close]')) return closePanel();
+  const ab = e.target.closest('[data-act]'); if (ab) { ab.disabled = true; act(ab.dataset.act); return; }
+  if (e.target.id === 'more') { storyOpen = !storyOpen; render(); document.getElementById('more')?.focus({ preventScroll: true }); return; }
+  if (e.target.id === 'mine') { onlyMine = !onlyMine; render(); }
+  if (e.target.id === 'resumeAll') { e.target.disabled = true; fetch('/api/limits/resume', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: data.project }) })
+    .then((r) => r.json()).then((j) => { if (j.error) throw new Error(j.error); load(); }).catch((err) => { e.target.disabled = false; e.target.previousElementSibling.textContent = T('flow.resumeFailed', { e: err.message }); }); }
+});
+
+// ---- data and the live stream
+// Until the flow is read, the screen says why it is empty
+const empty = (text) => { document.getElementById('tools').hidden = true; document.getElementById('totals').textContent = text; cv.setData({ plans: [], nodes: [], edges: [] }, { empty: esc(text) }); };
+const loadMetrics = async () => { try { const r = await fetch(`/api/usage?project=${encodeURIComponent(project)}&only=metrics`); const j = await r.json(); metrics = j.metrics && j.metrics.overall ? j.metrics.overall : null; } catch { metrics = null; } };
+const loadClaude = async () => { try { const r = await fetch(`/api/status?project=${encodeURIComponent(project)}`); const j = await r.json(); claude = j.claude || null; } catch { claude = null; } };
+const load = async () => { if (!project) return empty(T('flow.noProject'));
+  let d; try { const r = await fetch(`/api/projectflow?project=${encodeURIComponent(project)}${showAll ? '&all=1' : ''}`); d = await r.json(); } catch { if (!data) empty(T('flow.down')); return; }
+  if (d.error) return empty(d.error); data = d;
+  sel = sel || new URLSearchParams(location.search).get('node'); if (sel && !data.nodes.some((n) => n.id === sel) && !endOf(sel)) sel = null;
+  await Promise.all([metrics ? null : loadMetrics(), loadClaude()]);
+  render(); if (sel) cv.setSelected(sel); };
+let timer = null;
+const connect = () => { if (!project) return; const es = new EventSource(`/api/events?project=${encodeURIComponent(project)}`);
+  // the history's metrics move slowly: read again once a minute at most, not on every change (docs/perf.md)
+  es.addEventListener('change', () => { clearTimeout(timer); timer = setTimeout(() => { if (Date.now() - metricsAt > 60e3) { metrics = null; metricsAt = Date.now(); } load(); }, 300); }); };
+let metricsAt = Date.now();
+load(); connect();
+escadrilleI18n.onChange(() => { if (data) render(); load(); }); // the story comes from the server
+</script>
+<script src="/game.js"></script>
+</body>
+</html>

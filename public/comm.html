@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="comm.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* Communication (lib/comm.mjs): the project's comm/ folder, read at every opening. One primary action, open a channel;
+   the visuals and the PDF below; what is left to publish and the sources folded in one line; the recap « En deux jours »
+   computed by the server. Every class is prefixed cm-. */
+.cm-sec { margin-bottom: 36px; max-width: 1180px; }
+.cm-sec > h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; font-size: var(--fs-section); font-weight: 600; }
+.cm-sec > h2 .n { color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+.cm-todo { display: flex; align-items: center; gap: 12px; max-width: 1180px; min-height: 44px; margin-bottom: 28px; padding: 6px 8px 6px 14px; border-radius: var(--radius-card); background: var(--raised); }
+.cm-todo .t { flex: 1; min-width: 0; line-height: 20px; }
+.cm-todo .t b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cm-todo .t span { color: var(--muted); }
+/* the channels: one card each, the whole card opens the text */
+.cm-ch { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.cm-card { position: relative; display: grid; grid-template-rows: auto auto 1fr auto; gap: 6px; min-height: 168px; padding: 16px 18px 14px; border: 0; border-radius: var(--radius-card); background: var(--surface); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+.cm-card:hover { background: var(--active); }
+.cm-card:active { transform: translateY(1px); }
+.cm-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cm-card .nm { display: flex; align-items: baseline; gap: 8px; font-weight: 600; font-size: 15px; }
+.cm-card .nm .lg { margin-left: auto; color: var(--muted); font-weight: 400; font-size: var(--fs-small); }
+.cm-card .ttl { font-weight: 500; line-height: 20px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cm-card .ex { color: var(--muted); line-height: 20px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.cm-card .go { color: var(--accent); font-size: var(--fs-small); font-weight: 500; }
+.cm-card.lead { grid-column: span 2; background: var(--surface); }
+.cm-card.lead .ttl { font-size: 18px; line-height: 24px; font-weight: 600; }
+/* the visuals: a row per network, light and dark side by side */
+.cm-net { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; padding: 14px 0; }
+.cm-net + .cm-net { margin-top: 6px; }
+.cm-net h3 { font-size: var(--fs-body); font-weight: 600; padding-top: 4px; }
+.cm-net h3 span { display: block; color: var(--muted); font-weight: 400; font-size: var(--fs-small); margin-top: 2px; }
+.cm-pairs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.cm-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.cm-pair .lg { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-small); }
+.cm-thumb { display: block; padding: 0; border: 0; border-radius: 6px; overflow: hidden; background: var(--raised); cursor: zoom-in; aspect-ratio: 1.91 / 1; transition: transform var(--t-press) var(--ease-out); }
+.cm-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cm-thumb:hover img { opacity: .92; }
+.cm-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* the PDF: one line each */
+.cm-pdfs { display: grid; gap: 2px; max-width: 640px; }
+.cm-pdf { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 12px; border: 0; border-radius: var(--radius-card); background: var(--raised); color: var(--text); font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.cm-pdf:hover { background: var(--active); }
+.cm-pdf:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cm-pdf b { font-weight: 500; flex: 1; }
+.cm-pdf span { color: var(--muted); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+/* the rest, folded */
+.cm-more { max-width: 1180px; margin-bottom: 36px; }
+.cm-more > summary { padding: 6px 0; color: var(--muted); cursor: pointer; }
+.cm-more > summary:hover { color: var(--text); }
+.cm-more ul { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 8px 0 0 18px; color: var(--muted); font-size: var(--fs-small); }
+.cm-more a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.cm-more a:hover { color: var(--text); }
+.cm-more .docs { display: flex; gap: 16px; margin: 8px 0 0 18px; }
+.cm-more .docs button { border: 0; background: none; padding: 0; color: var(--text); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+/* the recap: the end of the demo, figures in large type on the dark field */
+.cm-recap { max-width: 1180px; margin: 8px 0 32px; padding: 28px 28px 24px; border-radius: var(--radius-card); background: #15191e; color: #f4f6f8; }
+:root[data-theme="dark"] .cm-recap { background: #232931; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cm-recap { background: #232931; } }
+.cm-recap h2 { font-size: 28px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 22px; }
+.cm-figs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; }
+.cm-fig b { display: block; font-size: 30px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cm-fig span { display: block; margin-top: 6px; color: #b6bcc4; font-size: var(--fs-small); line-height: 18px; }
+.cm-punch { margin-top: 26px; font-size: 22px; line-height: 30px; font-weight: 500; max-width: 760px; }
+.cm-sale { margin-top: 8px; color: #b6bcc4; line-height: 20px; }
+.cm-src { margin-top: 14px; color: #969ea7; font-size: 12px; line-height: 18px; }
+/* the reader and the viewers: one dialog */
+dialog.cm-dlg { width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 0; border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgb(0 0 0 / 0.28); } /* taste-skill-ignore: a dialog floats */
+dialog.cm-dlg.wide { width: min(1240px, calc(100vw - 32px)); }
+dialog.cm-dlg::backdrop { background: rgb(0 0 0 / 0.45); }
+.cm-dlg .bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 20px; background: var(--raised); }
+.cm-dlg .bar b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.cm-seg { display: inline-flex; padding: 2px; border-radius: 7px; background: var(--raised); }
+.cm-seg button { height: 28px; padding: 0 10px; border: 0; border-radius: 5px; background: none; color: var(--muted); font: inherit; font-weight: 500; cursor: pointer; }
+.cm-seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+.cm-body { padding: 8px 28px 28px; overflow: auto; max-height: calc(100vh - 110px); }
+.cm-body.media { padding: 12px; display: grid; place-items: center; }
+.cm-body.media img { max-width: 100%; max-height: calc(100vh - 140px); border-radius: 6px; }
+.cm-body.media iframe { width: 100%; height: calc(100vh - 140px); border: 0; border-radius: 6px; background: #fff; }
+.cm-md { max-width: 70ch; line-height: 1.6; font-size: 15px; }
+.cm-md h1 { font-size: 24px; line-height: 1.25; margin: 20px 0 12px; letter-spacing: -0.01em; }
+.cm-md h2 { font-size: 18px; margin: 26px 0 8px; }
+.cm-md h3, .cm-md h4 { font-size: 15px; margin: 20px 0 6px; }
+.cm-md p, .cm-md ul, .cm-md ol, .cm-md blockquote, .cm-md table, .cm-md pre { margin: 0 0 12px; }
+.cm-md ul, .cm-md ol { padding-left: 22px; } .cm-md ul { list-style: disc; } .cm-md ol { list-style: decimal; }
+.cm-md li + li { margin-top: 4px; }
+.cm-md a { color: var(--accent); }
+.cm-md code { font-family: var(--mono); font-size: 13px; background: var(--raised); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.cm-md pre { background: var(--raised); padding: 12px 14px; border-radius: 6px; overflow: auto; } .cm-md pre code { background: none; padding: 0; }
+.cm-md blockquote { padding-left: 14px; border-left: 3px solid var(--active); color: var(--muted); }
+.cm-md table { border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+.cm-md th, .cm-md td { text-align: left; vertical-align: top; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); } /* taste-skill-ignore: a real table */
+.cm-md th { font-weight: 600; }
+.cm-md hr { border: 0; height: 6px; background: var(--raised); border-radius: 3px; margin: 24px 0; }
+.cm-empty { color: var(--muted); max-width: 640px; line-height: 22px; }
+@media (max-width: 860px) {
+  .cm-card.lead { grid-column: auto; }
+  .cm-net { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .cm-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cm-fig.first { grid-column: 1 / -1; }
+  .cm-recap { padding: 22px 18px 20px; }
+  .cm-recap h2 { font-size: 24px; }
+  .cm-fig b { font-size: 26px; }
+  .cm-punch { font-size: 19px; line-height: 26px; }
+  .cm-body { padding: 4px 18px 24px; }
+  .cm-todo { flex-wrap: wrap; padding: 10px 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .cm-card, .cm-thumb { transition: none; } .cm-card:active { transform: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 data-i18n="comm.title" data-i18n-attr="title:comm.titleHint"></h1><p class="sub" id="lede"></p></div></div>
+      <div id="view"></div>
+    </div></main>
+  </div>
+</div>
+<dialog class="cm-dlg" id="dlg" aria-labelledby="dlgT"><div class="bar"><b id="dlgT"></b><span id="dlgLang"></span><button type="button" class="btn ghost" id="dlgClose" data-i18n="comm.close"></button></div><div class="cm-body" id="dlgBody"></div></dialog>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const P = window.escadrilleProjects;
+let project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || null;
+let data = null; let reading = null; // reading: { kind: 'md', id, lang } | null
+const fileUrl = (rel) => '/api/comm/file?project=' + encodeURIComponent(project) + '&path=' + encodeURIComponent(rel);
+const NAMES = { linkedin: 'LinkedIn', x: 'X', hackernews: 'Hacker News', reddit: 'Reddit', producthunt: 'Product Hunt', og: null };
+const chName = (id) => (T.has('comm.ch.' + id) ? T('comm.ch.' + id) : NAMES[id] || id);
+const netName = (id) => (T.has('comm.net.' + id) ? T('comm.net.' + id) : NAMES[id] || id);
+const langOf = (c) => (c.langs[T.lang] ? T.lang : c.langs.fr ? 'fr' : c.langs.en ? 'en' : 'any');
+const word = (n) => (T.has('comm.word.' + n) ? T('comm.word.' + n) : T.num(n));
+const kb = (b) => T('comm.kb', { n: T.num(Math.max(1, Math.round(b / 1024))) });
+
+// ---- the screen
+const todoHtml = () => {
+  const pub = data.head.find((h) => h.file === 'PUBLIER.md'); if (!pub) return '';
+  const { left, done } = pub.boxes;
+  return `<div class="cm-todo"><p class="t"><b>${esc(T('comm.todo.h'))}</b> <span>${esc(left + done ? T('comm.todo.n', { left, all: left + done }) : T('comm.todo.order'))}</span></p><button type="button" class="btn" data-doc="PUBLIER.md">${esc(T('comm.todo.open'))}</button></div>`;
+};
+const cardHtml = (c, i) => {
+  const lg = langOf(c); const e = c.langs[lg]; const langs = Object.keys(c.langs).filter((l) => l !== 'any');
+  return `<button type="button" class="cm-card${i === 0 && e.title ? ' lead' : ''}" data-ch="${esc(c.id)}"><span class="nm">${esc(chName(c.id))}<span class="lg">${esc(langs.map((l) => l.toUpperCase()).join(' · '))}</span></span>${e.title ? `<span class="ttl">${esc(e.title)}</span>` : ''}<span class="ex">${esc(e.excerpt)}</span><span class="go">${esc(T('comm.read'))}</span></button>`;
+};
+const visualsHtml = () => data.visuals.map((g) => `<div class="cm-net"><h3>${esc(netName(g.id))}<span>${esc(T('comm.vis.n', { n: g.pairs.reduce((s, p) => s + !!p.light + !!p.dark, 0) }))}</span></h3><div class="cm-pairs">${g.pairs.map((p) => `<div class="cm-pair"><span class="lg">${esc(p.lang ? T('comm.lang.' + p.lang) : '')}</span>${['light', 'dark'].filter((k) => p[k]).map((k) => `<button type="button" class="cm-thumb" data-img="${esc(p[k])}" aria-label="${esc(T('comm.vis.open', { net: netName(g.id), lang: p.lang ? p.lang.toUpperCase() : '', theme: T('comm.theme.' + k) }))}"><img src="${esc(fileUrl(p[k]))}" alt="" loading="lazy"></button>`).join('')}</div>`).join('')}</div></div>`).join('');
+const pdfsHtml = () => data.pdfs.map((p) => `<button type="button" class="cm-pdf" data-pdf="${esc(p.file)}"><b>${esc(T('comm.pdf.name', { lang: p.lang ? T('comm.lang.' + p.lang) : p.file }))}</b><span>${esc('PDF · ' + kb(p.bytes))}</span></button>`).join('');
+const moreHtml = () => {
+  const docs = data.head.filter((h) => h.file !== 'PUBLIER.md');
+  return `<details class="cm-more"><summary>${esc(T('comm.more', { n: data.sources.length, docs: docs.length }))}</summary>${docs.length ? `<div class="docs">${docs.map((d) => `<button type="button" data-doc="${esc(d.file)}">${esc(d.title || d.file)}</button>`).join('')}</div>` : ''}<ul>${data.sources.map((s) => `<li><a href="${esc(fileUrl(s))}" target="_blank" rel="noopener">${esc(s.replace(/^visuals\//, ''))}</a></li>`).join('')}</ul></details>`;
+};
+const saleLine = (s) => (s.state === 'none' ? T('comm.sale.none') : T('comm.sale.' + s.state, { title: s.title || s.plan }));
+const recapHtml = () => {
+  const r = data.recap; if (!r.firstCommit) return '';
+  const p = r.plans; const ph = r.phases;
+  const figs = [
+    { b: T.dateTime(r.firstCommit.at), s: T('comm.r.first'), cls: 'first', title: r.firstCommit.hash + ' · ' + r.firstCommit.subject },
+    { b: T.num(r.commits), s: T('comm.r.commits', { branch: r.branch }) },
+    { b: T.num(ph.length), s: ph.length ? T('comm.r.phases', { from: ph[0], to: ph[ph.length - 1] }) : T('comm.r.phasesNone') },
+    p.sessions == null ? { b: '—', s: T('comm.r.sessionsNone') } : { b: T.num(p.sessions), s: T('comm.r.sessions', { plans: p.launched, merged: p.sessionsMerged, plansMerged: p.merged }) },
+    r.cost == null ? { b: '—', s: T('comm.r.costNone') } : { b: T.usd(r.cost, 0), s: T('comm.r.cost', { n: r.costSessions }) },
+  ];
+  return `<section class="cm-recap" aria-labelledby="recapH"><h2 id="recapH">${esc(T('comm.r.h', { n: word(r.days) }))}</h2><div class="cm-figs">${figs.map((f) => `<div class="cm-fig ${f.cls || ''}"${f.title ? ` title="${esc(f.title)}"` : ''}><b>${esc(f.b)}</b><span>${esc(f.s)}</span></div>`).join('')}</div><p class="cm-punch">${esc(T('comm.r.punch'))}</p>${r.sale.state === 'unknown' ? '' : `<p class="cm-sale">${esc(saleLine(r.sale))}</p>`}<p class="cm-src">${esc(T('comm.r.src', { at: T.time(r.at) }))}</p></section>`;
+};
+const view = () => {
+  if (!data.exists) { $('lede').textContent = T('comm.lede.none'); $('view').innerHTML = `<p class="cm-empty">${esc(T('comm.none'))}</p>` + recapHtml(); return; }
+  $('lede').textContent = T('comm.lede', { n: data.files });
+  $('view').innerHTML = todoHtml()
+    + `<section class="cm-sec" aria-labelledby="chH"><h2 id="chH">${esc(T('comm.ch.h'))} <span class="n">${data.channels.length}</span></h2><div class="cm-ch">${data.channels.map(cardHtml).join('')}</div></section>`
+    + (data.visuals.length ? `<section class="cm-sec" aria-labelledby="visH"><h2 id="visH">${esc(T('comm.vis.h'))} <span class="n">${data.visuals.reduce((s, g) => s + g.pairs.reduce((t, p) => t + !!p.light + !!p.dark, 0), 0)}</span></h2>${visualsHtml()}</section>` : '')
+    + (data.pdfs.length ? `<section class="cm-sec" aria-labelledby="pdfH"><h2 id="pdfH">${esc(T('comm.pdf.h'))} <span class="n">${data.pdfs.length}</span></h2><div class="cm-pdfs">${pdfsHtml()}</div></section>` : '')
+    + moreHtml() + recapHtml();
+};
+
+// ---- the dialog: a text (FR/EN when both exist), a visual, a PDF
+const dlg = $('dlg');
+const openDlg = ({ title, body, media = false, wide = false, langs = null }) => {
+  $('dlgT').textContent = title; $('dlgBody').className = 'cm-body' + (media ? ' media' : ''); $('dlgBody').innerHTML = body; dlg.classList.toggle('wide', wide);
+  $('dlgLang').innerHTML = langs ? `<span class="cm-seg" role="group" aria-label="${esc(T('comm.langSwitch'))}">${langs.map((l) => `<button type="button" data-lang="${l}" aria-pressed="${l === reading.lang}">${l.toUpperCase()}</button>`).join('')}</span>` : '';
+  if (!dlg.open) dlg.showModal(); $('dlgBody').scrollTop = 0;
+};
+const openChannel = (id, lang) => {
+  const c = data.channels.find((x) => x.id === id); if (!c) return; lang = c.langs[lang] ? lang : langOf(c); reading = { id, lang };
+  const langs = Object.keys(c.langs).filter((l) => l !== 'any'); const e = c.langs[lang];
+  openDlg({ title: chName(id) + (lang !== 'any' ? ' · ' + lang.toUpperCase() : ''), body: `<div class="cm-md">${e.html}</div>`, langs: langs.length > 1 ? langs : null });
+};
+const openDoc = (file) => { const d = data.head.find((h) => h.file === file); if (!d) return; reading = null; openDlg({ title: d.title || file, body: `<div class="cm-md">${d.html}</div>` }); };
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest('[data-ch],[data-img],[data-pdf],[data-doc],[data-lang],#dlgClose'); if (!t) { if (ev.target === dlg) dlg.close(); return; }
+  if (t.id === 'dlgClose') return dlg.close();
+  if (t.dataset.ch) return openChannel(t.dataset.ch, T.lang);
+  if (t.dataset.lang && reading) return openChannel(reading.id, t.dataset.lang);
+  if (t.dataset.doc) return openDoc(t.dataset.doc);
+  if (t.dataset.img) { reading = null; return openDlg({ title: t.dataset.img.replace(/^visuals\//, ''), body: `<img src="${esc(fileUrl(t.dataset.img))}" alt="${esc(t.getAttribute('aria-label') || '')}">`, media: true, wide: true }); }
+  if (t.dataset.pdf) { reading = null; return openDlg({ title: t.dataset.pdf.replace(/^pdf\//, ''), body: `<iframe src="${esc(fileUrl(t.dataset.pdf))}" title="${esc(t.dataset.pdf)}"></iframe>`, media: true, wide: true }); }
+});
+
+// ---- the shell
+const titles = () => { document.title = T('comm.docTitle', { name: P.name(project) }); $('crumb').textContent = T('comm.title'); };
+const shell = async () => {
+  const got = await fetch('/api/projects').then((r) => r.json()).catch(() => ({})); const projects = Array.isArray(got) ? got : got.projects || [];
+  if (!project && projects.length) project = projects[0].path;
+  titles(); window.escadrilleSidebar.render($('sidebar'), { project });
+};
+const load = async () => {
+  const r = await fetch('/api/comm?project=' + encodeURIComponent(project)); const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $('lede').textContent = j.error || r.statusText; return; }
+  data = j; view();
+};
+$('lede').textContent = T('comm.loading');
+escadrilleI18n.onChange(() => { titles(); if (data) view(); });
+shell().then(() => { if (!project) { $('lede').textContent = T('comm.pickFolder'); return; } localStorage.setItem('escadrille.project', project); load(); });
+</script>
+</body>
+</html>

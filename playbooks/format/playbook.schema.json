@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "escadrille/playbook.schema.json",
+  "title": "Escadrille playbook",
+  "description": "A chain of plans (waves of plans), its assets, its configuration form, its ready-to-test criteria and its business metrics. lib/playbooks.mjs enforces this schema and the cross-field rules it cannot express (unique keys, known references, no cycle, no leak).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "promise", "audience", "price", "config", "plans", "assets", "ready", "metrics"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "$ref": "#/$defs/slug" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "status": { "enum": ["draft", "ready", "retired"] },
+    "license": { "enum": ["example", "proprietary", "MIT"], "description": "example: the anonymous sample in the public repository; proprietary: a paid playbook, never in the public repository." },
+    "title": { "type": "string", "minLength": 3, "maxLength": 120 },
+    "promise": { "type": "string", "minLength": 10, "maxLength": 200, "description": "One sentence, no line break." },
+    "audience": { "type": "string", "minLength": 3, "maxLength": 300 },
+    "price": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency", "model"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "model": { "enum": ["one-time", "subscription", "revenue-share", "free"] },
+        "note": { "type": "string", "maxLength": 300 }
+      }
+    },
+    "config": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "kind", "default"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9]*$" },
+          "label": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["text", "choice", "lang", "money", "color", "domain", "number", "bool"] },
+          "default": {},
+          "options": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+          "help": { "type": "string" }
+        }
+      }
+    },
+    "plans": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "after", "budget"],
+        "oneOf": [{ "required": ["template"] }, { "required": ["idea"] }],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "title": { "type": "string" },
+          "template": { "$ref": "#/$defs/slug", "description": "A plan template id (plans/templates/<id>.json)." },
+          "fields": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values for the template fields; {{key}} refers to the config." },
+          "idea": { "type": "string", "minLength": 10, "description": "The idea given to the planning session; {{key}} refers to the config." },
+          "after": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
+          "budget": { "type": "number", "exclusiveMinimum": 0, "description": "Dollars, for the whole plan." },
+          "domains": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "description": "Network domains; empty by default." }
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "kind"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$" },
+          "kind": { "enum": ["app-skeleton", "schema", "page", "copy", "tickets", "checklist", "dashboard", "seed", "doc"] },
+          "state": { "enum": ["todo", "draft", "ready"] },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "ready": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "check"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "label": { "type": "string" },
+          "check": {
+            "type": "object",
+            "required": ["kind"],
+            "oneOf": [
+              { "properties": { "kind": { "const": "file" }, "path": { "type": "string" } }, "required": ["kind", "path"] },
+              { "properties": { "kind": { "const": "command" }, "run": { "type": "string" } }, "required": ["kind", "run"] },
+              { "properties": { "kind": { "const": "url" }, "url": { "type": "string", "pattern": "^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?(/.*)?$" }, "expect": { "type": "integer" } }, "required": ["kind", "url"] },
+              { "properties": { "kind": { "const": "count" }, "path": { "type": "string" }, "min": { "type": "integer", "minimum": 1 } }, "required": ["kind", "path", "min"] }
+            ]
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "unit"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "label": { "type": "string" },
+          "unit": { "enum": ["count", "percent", "money", "seconds", "days"] },
+          "source": { "type": "string", "description": "The events or the query it is computed from." },
+          "target": { "type": "string", "description": "A threshold to decide, written as text (e.g. '>= 5 %')." }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+  }
+}

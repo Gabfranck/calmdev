@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="rep.title"></title>
+<link rel="stylesheet" href="/app.css">
+<style>
+/* Réponses (docs/replies.md): the comments on the launch posts, one at a time, the oldest first. The screen's question:
+   « à qui je réponds maintenant, et quoi ? ». The biggest block is the current comment with its draft under it; one primary
+   action, « Envoyer » (to the paste step), « Modifier » beside it; « Plus tard » folded in one line, the queue folded in one
+   line. Column: 760 px at most, left on the canvas edge like the other screens of the app (resources, learning). */
+.col { max-width: 760px; display: grid; gap: 16px; }
+.count { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.card { background: var(--raised); border-radius: var(--radius-card); padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.who b { font-size: var(--fs-section); font-weight: 600; overflow-wrap: anywhere; }
+.who .meta { color: var(--muted); font-size: var(--fs-small); }
+.who a { color: var(--muted); font-size: var(--fs-small); margin-left: auto; text-decoration: none; }
+.who a:hover { color: var(--text); text-decoration: underline; }
+.pill { flex: none; white-space: nowrap; display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: var(--fs-small); }
+.quote { font-size: 16px; line-height: 24px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.onpost { color: var(--faint); font-size: var(--fs-small); }
+.onpost > summary { cursor: pointer; } .onpost > summary:hover { color: var(--muted); }
+.onpost p { margin: 8px 0 0; color: var(--muted); white-space: pre-wrap; line-height: 20px; max-height: 160px; overflow: auto; }
+.reply { background: var(--surface); border-radius: var(--radius-control); padding: 14px 16px; display: grid; gap: 8px; }
+.reply .lbl { color: var(--muted); font-size: var(--fs-small); display: flex; gap: 8px; justify-content: space-between; }
+.reply .txt { font-size: 16px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.reply textarea { width: 100%; min-height: 132px; resize: vertical; font: 400 16px/24px var(--font); padding: 10px 12px; box-sizing: border-box; }
+.reply ul { margin: 0; padding-left: 18px; line-height: 22px; }
+.reply .none { color: var(--muted); }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.acts .btn { height: 36px; padding: 0 16px; }
+.acts .hint { color: var(--muted); font-size: var(--fs-small); }
+.step { display: grid; gap: 6px; padding: 12px 16px; border-radius: var(--radius-control); background: var(--accent-tint); color: var(--text); }
+.step span { color: var(--muted); font-size: var(--fs-small); }
+.fold > summary { padding: 6px 0; color: var(--muted); cursor: pointer; } .fold > summary:hover { color: var(--text); }
+.fold .in { padding: 8px 0 4px 18px; display: grid; gap: 8px; color: var(--muted); }
+.fold .in .btn { justify-self: start; height: 32px; }
+.queue { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.queue li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 40px; padding: 0 12px; background: var(--raised); border-radius: var(--radius-card); }
+.queue li .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.queue li .t i { font-style: normal; color: var(--muted); }
+.queue li .w { color: var(--faint); font-size: var(--fs-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { padding: 32px 20px; background: var(--raised); border-radius: var(--radius-card); display: grid; gap: 6px; }
+.empty b { font-size: var(--fs-section); }
+.empty span { color: var(--muted); }
+.err { color: var(--danger, #b42318); }
+@media (max-width: 640px) {
+  .card { padding: 16px; }
+  .who a { margin-left: 0; flex-basis: 100%; }
+  .acts .btn { flex: 1; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" aria-label="Menu" aria-expanded="false">Menu</button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb"></b></span><span class="spacer"></span></div>
+    <main class="sheet"><div class="canvas" id="canvas">
+      <div class="title-row"><div><h1 id="h1"></h1><p class="sub" id="lede"></p></div></div>
+      <div class="col" id="col"></div>
+    </div></main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+// The page's words are the rep.* keys of public/i18n/en.json and fr.json (docs/replies.md)
+const PLATFORM = { linkedin: 'LinkedIn', hackernews: 'Hacker News', reddit: 'Reddit', x: 'X', producthunt: 'Product Hunt', github: 'GitHub' };
+const L = (key, vars) => T('rep.' + key, vars);
+const known = (key) => { const v = L(key); return v === 'rep.' + key ? null : v; };
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const call = async (path, body) => { const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})); if (!r.ok || j.error) throw new Error(j.error || r.statusText); return j; };
+const ago = (at) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000)); return m < 1 ? L('now') : m < 60 ? L('ago.m', { n: m }) : m < 2880 ? L('ago.h', { n: Math.round(m / 60) }) : L('ago.d', { n: Math.round(m / 1440) }); };
+const enc = encodeURIComponent;
+let data = null; let editing = false; let err = '';
+
+const replyBlock = (c) => {
+  if (editing) return `<div class="reply"><label class="lbl" for="draft"><span>${esc(L('draft'))}</span><span>${esc(L('yours'))}</span></label><textarea class="control" id="draft">${esc(c.draft)}</textarea></div>`;
+  const pts = c.platform === 'hackernews' && c.points && c.points.length ? `<ul>${c.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : '';
+  const head = `<div class="lbl"><span>${esc(pts && !c.draft ? L('hn') : L('draft'))}</span><span>${esc(c.draftBy === 'gab' ? L('yours') : c.draft ? L('draftBy') : '')}</span></div>`;
+  const body = c.draft ? `<p class="txt">${esc(c.draft)}</p>` : pts || `<p class="none">${esc(L('noDraft'))}</p>`;
+  return `<div class="reply">${head}${pts && c.draft ? pts : ''}${body}</div>`;
+};
+const actions = (c) => {
+  if (c.state === 'ready' || c.state === 'pasted') {
+    const pf = PLATFORM[c.platform] || c.platform;
+    return `<div class="step" role="status"><b>${esc(L('sent'))}</b><span>${esc(L('sentHow', { platform: pf }))}</span></div>
+      <div class="acts"><button class="btn primary" data-do="published">${esc(L('published'))}</button>${c.url ? `<a class="btn" href="${esc(c.url)}" target="_blank" rel="noopener">${esc(L('open', { platform: pf }))}</a>` : ''}</div>`;
+  }
+  if (editing) return `<div class="acts"><button class="btn primary" data-do="save">${esc(L('save'))}</button><button class="btn ghost" data-do="cancel">${esc(L('cancel'))}</button></div>`;
+  // Without a text there is nothing to send: the primary action is to write it (Hacker News: always Dev's own words)
+  if (!String(c.draft || '').trim()) return `<div class="acts"><button class="btn primary" data-do="edit">${esc(L(c.platform === 'hackernews' ? 'hnWrite' : 'edit'))}</button>${c.points && c.points.length ? '' : `<button class="btn" data-do="draft">${esc(L('redraft'))}</button>`}</div>`;
+  return `<div class="acts"><button class="btn primary" data-do="send">${esc(L('send'))}</button><button class="btn" data-do="edit">${esc(L('edit'))}</button></div>`;
+};
+const render = () => {
+  document.title = L('title'); $('h1').textContent = L('title'); $('crumb').textContent = L('title');
+  if (!data) return;
+  const n = data.waiting.people; $('lede').innerHTML = L('waiting', { n });
+  const c = data.current;
+  if (!c) { $('col').innerHTML = `<div class="empty"><b>${esc(L('done'))}</b><span>${esc(L('doneSub'))}</span></div>`; return; }
+  const pf = PLATFORM[c.platform] || c.platform; const post = c.post ? known('post.' + c.post) || c.post : '';
+  const others = data.next.length;
+  $('col').innerHTML = `
+    <article class="card" aria-labelledby="who">
+      <div class="who" id="who"><b>${esc(c.author)}</b><span class="pill">${esc(pf)}</span><span class="pill">${esc(known('lang.' + c.lang) || c.lang)}</span><span class="meta">${esc(ago(c.at))}${c.laterCount ? ' · ' + esc(L('laterBack', { n: c.laterCount })) : ''}</span>${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(L('see'))}</a>` : ''}</div>
+      <p class="quote">${esc(c.text)}</p>
+      ${post ? `<details class="onpost"><summary>${esc(L('on', { post }))}</summary><p>${esc(c.postText || '')}</p></details>` : ''}
+      ${replyBlock(c)}
+      ${actions(c)}
+      ${err ? `<p class="err" role="alert">${esc(err)}</p>` : ''}
+    </article>
+    ${c.state === 'waiting' || c.state === 'later' ? `<details class="fold" id="later"><summary>${esc(L('laterLine'))}</summary><div class="in"><span>${esc(L('laterWhy', { n: Math.max(1, others) }))}</span><button class="btn" data-do="later">${esc(L('later'))}</button></div></details>` : ''}
+    ${others ? `<details class="fold" id="queue"><summary>${esc(L('next', { n: others }))}</summary><ol class="queue">${data.next.map((r) => `<li><span class="t">${esc(r.author)} <i>· ${esc(PLATFORM[r.platform] || r.platform)}${r.state === 'later' ? ' · ' + esc(L('laterTag')) : ''}</i></span><span class="w">${esc(ago(r.at))}</span></li>`).join('')}</ol></details>` : ''}`;
+  if (editing) { const t = $('draft'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+};
+const load = async () => { try { data = await call('/api/replies'); err = ''; } catch (e) { err = e.message; } render(); };
+$('col').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-do]'); if (!b || !data || !data.current) return;
+  const id = enc(data.current.id); const what = b.dataset.do;
+  if (what === 'edit') { editing = true; return render(); }
+  if (what === 'cancel') { editing = false; return render(); }
+  b.disabled = true;
+  try {
+    if (what === 'save') { data = await call(`/api/replies/${id}/edit`, { draft: $('draft').value }); editing = false; }
+    else data = await call(`/api/replies/${id}/${what}`, {});
+    err = '';
+  } catch (x) { err = x.message; }
+  render();
+  const first = document.querySelector('#col .btn.primary'); if (first && what !== 'edit') first.focus();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editing) { editing = false; render(); } });
+if (window.escadrilleI18n) window.escadrilleI18n.onChange(render);
+const project = new URLSearchParams(location.search).get('project') || localStorage.getItem('escadrille.project') || null;
+if (window.escadrilleSidebar) window.escadrilleSidebar.render($('sidebar'), { project });
+render(); load();
+setInterval(() => { if (!editing && document.visibilityState === 'visible') load(); }, 20000);
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{
+  "$schema": "../format/playbook.schema.json",
+  "id": "quiz-de-classe",
+  "version": "0.1.0",
+  "status": "draft",
+  "license": "example",
+  "title": "Exemple : un quiz de classe prêt à montrer",
+  "promise": "Une petite app de quiz pour une classe, avec sa page d'accueil locale et trois métriques, pour voir la forme d'un playbook.",
+  "audience": "Quiconque veut lire le format avant d'écrire son propre playbook ; exemple réduit et anonyme, sans actif réel.",
+  "price": { "amount": 0, "currency": "EUR", "model": "free", "note": "Exemple du dépôt public : gratuit, MIT comme le moteur." },
+  "config": [
+    { "key": "productName", "label": "Nom du produit", "kind": "text", "default": "Mon quiz" },
+    { "key": "subject", "label": "Matière", "kind": "text", "default": "histoire" },
+    { "key": "lang", "label": "Langue", "kind": "lang", "default": "fr-FR" },
+    { "key": "primaryColor", "label": "Couleur principale", "kind": "color", "default": "#2F5D50" },
+    { "key": "monthlyPrice", "label": "Prix mensuel affiché (€)", "kind": "money", "default": 5 }
+  ],
+  "plans": [
+    { "id": "socle", "title": "L'API et les données", "idea": "{{productName}} : une API locale (Node, SQLite) avec des profs, des classes, des questions de {{subject}} et des parties, une seed synthétique, et ses tests.", "after": [], "budget": 15 },
+    { "id": "ecrans", "title": "L'app et la page d'accueil", "idea": "{{productName}} : l'écran de jeu de l'élève et une page d'accueil en {{lang}} aux couleurs {{primaryColor}}, prix affiché {{monthlyPrice}} € par mois, sur l'API du plan socle.", "after": ["socle"], "budget": 15 },
+    { "id": "passe", "title": "La passe design", "template": "passe-design", "fields": { "écrans": "la page d'accueil et l'écran de jeu de {{productName}}" }, "after": ["ecrans"], "budget": 6 }
+  ],
+  "assets": [
+    { "path": "checklist/lancement.md", "kind": "checklist", "state": "todo", "note": "Un vrai playbook livre ici sa checklist ; l'exemple n'en a pas." }
+  ],
+  "ready": [
+    { "id": "landing-locale", "label": "La page d'accueil répond en local", "check": { "kind": "url", "url": "http://localhost:3000/", "expect": 200 } },
+    { "id": "tests-verts", "label": "Les tests de l'API passent", "check": { "kind": "command", "run": "npm test" } },
+    { "id": "interviews", "label": "Une liste d'au moins cinq profs à interroger", "check": { "kind": "count", "path": "docs/interviews.md", "min": 5 } }
+  ],
+  "metrics": [
+    { "key": "landing_visits", "label": "Visites de la page d'accueil", "unit": "count", "source": "pageviews de /" },
+    { "key": "signup_rate", "label": "Inscriptions sur visites", "unit": "percent", "source": "create_account / landing_visits" },
+    { "key": "activation_7d", "label": "Profs dont la classe a joué dans les 7 jours", "unit": "percent", "source": "create_group puis game_completed d'un élève du groupe", "target": "seuil de départ à fixer après les interviews" }
+  ]
+}

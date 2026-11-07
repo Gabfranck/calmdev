@@ -1,0 +1,19 @@
+{
+ "id": "revue-pr",
+ "title": "Revue de PR",
+ "summary": "Lire la PR, la relire par /code-review, lister les écarts, proposer les correctifs en commits séparés.",
+ "idea": "Revue de la PR [PR] du dépôt [dépôt], vers [branche de base].\nLire la PR et son contexte, la relire par /code-review, lister les écarts (bugs, règles du projet non tenues, tests manquants), proposer les correctifs en commits séparés sur une branche à part, et ne rien fusionner sans mon accord.",
+ "hints": [
+  "Une session de lecture : la PR, son diff, les tickets ou docs qu'elle cite, les règles du projet (CLAUDE.md) ; elle ne modifie rien. Premier arrêt : le résumé de ce que la PR fait, en cinq lignes.",
+  "Une session de relecture par /code-review sur le diff, qui écrit la liste des écarts dans un fichier (sévérité, fichier:ligne, scénario d'échec) ; arrêt de genre review pour que le développeur trie la liste.",
+  "Une session de correctifs, après la liste triée : un commit par écart accepté, sur une branche à part, jamais dans la branche de la PR ; arrêt de genre review sur la branche de correctifs.",
+  "Rien n'est fusionné, poussé ni commenté sur la PR sans l'accord du développeur : le dernier arrêt est de genre release.",
+  "Modèles : Fable 5.1 ou Opus 5.5 pour la relecture, Sonnet 5.5 pour la lecture et les petits correctifs.",
+  "Si l'idée ne dit pas laquelle est la PR, ou ce qui compte le plus (sécurité, performance, style), demande-le."
+ ],
+ "fields": [
+  { "key": "PR", "label": "La PR (numéro, lien ou branche)" },
+  { "key": "dépôt", "label": "Le dépôt (chemin)" },
+  { "key": "branche de base", "label": "La branche visée par la PR" }
+ ]
+}

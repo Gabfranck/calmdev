@@ -1,0 +1,18 @@
+{
+ "id": "exemple",
+ "title": "Exemple : une feature en cinq sessions",
+ "created": "2026-11-01T00:00:00.000Z",
+ "goal": "Un plan d'exemple pour voir le flot : cinq sessions, trois vagues, deux dépendances explicites et une session qui attend toute la vague d'avant.",
+ "waves": [
+  { "n": 1, "title": "Maintenant, en parallèle", "tag": "2 fenêtres", "text": "Deux dossiers différents, aucune dépendance." },
+  { "n": 2, "title": "Quand A et B sont fusionnées", "tag": "2 fenêtres", "text": "Les tests et la doc, chacun derrière ce qu'il décrit." },
+  { "n": 3, "title": "À la fin", "tag": "1 fenêtre", "text": "La vérification de bout en bout et la fusion." }
+ ],
+ "sessions": [
+  { "id": "A", "wave": 1, "name": "L'API", "where": "api · branche feature/x", "when": "Maintenant.", "path": "/srv/projets/escadrille", "model": "claude-opus-5-5", "stops": ["Le schéma proposé", "Les routes et leurs tests", "La PR"], "prompt": "Exemple de prompt A : écrire l'API de la feature x, ses routes et ses tests." },
+  { "id": "B", "wave": 1, "name": "L'écran", "where": "app · branche feature/x-ui", "when": "Maintenant, en parallèle de A.", "path": "/srv/projets/escadrille", "model": "claude-fable-5-1", "stops": ["La maquette", "L'écran branché sur un faux serveur", "La PR"], "prompt": "Exemple de prompt B : dessiner et construire l'écran de la feature x sur un faux serveur, puis le brancher." },
+  { "id": "C", "wave": 2, "name": "Les tests de bout en bout", "where": "les deux repos sur dev", "when": "Quand A et B sont fusionnées.", "path": "/srv/projets/escadrille", "model": "claude-sonnet-5-5", "after": ["A", "B"], "stops": ["La liste des parcours", "Les tests verts"], "prompt": "Exemple de prompt C : écrire les tests de bout en bout des parcours de la feature x, API et écran ensemble." },
+  { "id": "D", "wave": 2, "name": "La doc et les migrations", "where": "api · branche feature/x-doc", "when": "Quand A est fusionnée.", "path": "/srv/projets/escadrille", "model": "claude-sonnet-5-5", "after": ["A"], "stops": ["La migration relue", "La doc publiée"], "prompt": "Exemple de prompt D : écrire la migration de données et la documentation de l'API de la feature x." },
+  { "id": "E", "wave": 3, "name": "La vérification et la fusion", "where": "les deux repos sur main", "when": "Quand toute la vague 2 est finie.", "path": "/srv/projets/escadrille", "model": "claude-opus-5-5", "stops": ["La liste des écarts", "La checklist de sortie", "La fusion"], "prompt": "Exemple de prompt E : vérifier la feature x de bout en bout, lister les écarts, puis fusionner." }
+ ]
+}

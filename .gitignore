@@ -1,0 +1,21 @@
+sessions.sqlite
+launch/
+node_modules/
+.taste-skill/
+.DS_Store
+.escadrille/
+.calmdev/
+.escadrille
+site/public-build/
+phone/node_modules/
+phone/.expo/
+phone/.env
+phone/.env.*
+payments/.env
+payments/data/
+
+# The server keeps the plans of every project here (plans/<id>.json): a developer's other projects must never
+# travel with the repository. Templates ship. Escadrille's own plans are tracked on purpose: add one with
+# `git add -f plans/<id>.json` (docs/publication.md).
+plans/*
+!plans/templates/

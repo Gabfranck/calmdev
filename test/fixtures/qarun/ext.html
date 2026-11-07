@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Faux site · hors Mac</title>
+</head>
+<body>
+<main>
+  <h1>Cette page appelle dehors</h1>
+  <img src="https://example.com/pixel.png" alt="" width="1" height="1">
+  <img src="http://203.0.113.9/pixel.png" alt="" width="1" height="1">
+  <a href="manquante.html">Lien vers une page absente</a>
+</main>
+<script>
+  console.error('erreur de test');
+  fetch('manquante.json').catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/events.js"></script>
+<meta charset="utf-8">
+<script src="/i18n.js"></script>
+<script src="/ux.js"></script>
+<link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<script src="/app-window.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title data-i18n="ds.title"></title>
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/mainchat.css">
+<style>
+/* The living design system (docs/design-system/README.md): every component below is the app's own markup rendered by
+   app.css, mainchat.css and canvas.js; nothing here restyles a component. What follows lays the catalogue out:
+   one column of sections 32 px apart, each a list of specimens on one left edge, the states side by side. */
+.ds section { margin-top: 32px; max-width: 1144px; }
+.ds section > h2 { font-size: var(--fs-section); font-weight: 600; margin-bottom: 4px; }
+.ds section > .sub { color: var(--muted); margin-bottom: 16px; }
+.ds .spec { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 8px 24px; align-items: start; padding: 12px 0; border-top: 1px solid var(--rule); }
+.ds .spec > .k { color: var(--muted); font-size: var(--fs-small); line-height: 18px; padding-top: 2px; }
+.ds .spec > .k b { display: block; color: var(--text); font-weight: 500; font-size: var(--fs-body); line-height: 20px; }
+.ds .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.ds .row .lbl { color: var(--faint); font-size: var(--fs-small); }
+.ds .on-ground { background: var(--ground); border-radius: var(--radius-card); padding: 16px; }
+.ds .on-ink { background: #15191e; border-radius: var(--radius-card); padding: 16px; }
+/* the two grounds of the app, fixed whatever the theme of the page, to see the mark on each (brand.mjs PAIRS) */
+.ds .on-light { background: #eef2f6; border-radius: var(--radius-card); padding: 16px; color: #596069; }
+.ds .on-dark { background: #0f1216; border-radius: var(--radius-card); padding: 16px; color: #b6bcc4; }
+.ds .on-light .lbl, .ds .on-dark .lbl { color: inherit; }
+.ds .brand img { display: block; }
+.ds .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.ds .sw { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; min-height: 44px; }
+.ds .sw i { display: block; width: 40px; height: 40px; border-radius: var(--radius-control); border: 1px solid var(--border); }
+.ds .sw .k { font-size: var(--fs-small); color: var(--muted); line-height: 18px; } .ds .sw .k b { display: block; color: var(--text); font-weight: 500; font-family: var(--mono); font-size: 13px; }
+.ds .type > div { display: flex; align-items: baseline; gap: 16px; padding: 6px 0; }
+.ds .type .lbl { width: 180px; flex: none; color: var(--muted); font-size: var(--fs-small); }
+.ds .fs-title { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.ds .fs-section { font-size: var(--fs-section); font-weight: 600; }
+.ds .fs-small { font-size: var(--fs-small); color: var(--muted); }
+.ds .fs-kpi { font: 500 22px/28px var(--mono); font-variant-numeric: tabular-nums; }
+.ds .fs-src { font-size: 12px; color: var(--faint); }
+.ds .sidebar-demo { width: 240px; padding: 16px 12px; }
+.ds .sidebar-demo .steps { display: grid; gap: 2px; }
+.ds .thread-demo { display: grid; gap: 10px; max-width: 760px; }
+.ds .tabs-demo { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.ds .tabs-demo a { height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ds .tabs-demo a[aria-current="page"] { color: var(--text); border-bottom-color: var(--text); font-weight: 500; }
+.ds .board { height: 200px; }
+.ds .status-demo { width: 360px; }
+.ds .spacing { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+.ds .spacing i { display: block; background: var(--active); border-radius: 2px; }
+.ds .spacing span { display: grid; gap: 6px; font-size: var(--fs-small); color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.ds .radii { display: flex; gap: 16px; flex-wrap: wrap; }
+.ds .radii span { display: grid; gap: 6px; font-size: var(--fs-small); color: var(--muted); text-align: center; }
+.ds .radii i { display: block; width: 56px; height: 56px; border: 1px solid var(--control); }
+@media (max-width: 860px) {
+  .ds .spec { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .ds .status-demo, .ds .sidebar-demo { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation"></nav>
+  <div class="frame ds">
+    <div class="topbar"><button class="btn ghost menu-toggle" id="menu" data-i18n-attr="aria-label:top.menu" aria-expanded="false" data-i18n="top.menu"></button><span class="crumb"><span class="proj" id="crumbProj" hidden></span><i aria-hidden="true" hidden>/</i><b id="crumb">Design system</b></span><span class="spacer"></span><span class="stamp" data-i18n="ds.stamp"></span></div>
+    <main class="sheet">
+      <div class="canvas">
+        <div class="title-row"><div><h1>Design system</h1><p class="sub" data-i18n-html="ds.lead"></p></div></div>
+
+        <section id="marque" class="brand" data-i18n-html="ds.marque"></section>
+
+        <section id="palette">
+          <h2 data-i18n-html="ds.palette.h"></h2>
+          <p class="sub" data-i18n-html="ds.palette.sub"></p>
+          <div class="swatches" id="swatches"></div>
+        </section>
+
+        <section id="type" data-i18n-html="ds.type"></section>
+
+        <section id="espaces" data-i18n-html="ds.espaces"></section>
+
+        <section id="barre" data-i18n-html="ds.barre"></section>
+
+        <section id="boutons" data-i18n-html="ds.boutons"></section>
+
+        <section id="champs" data-i18n-html="ds.champs"></section>
+
+        <section id="pastilles" data-i18n-html="ds.pastilles"></section>
+
+        <section id="lignes" data-i18n-html="ds.lignes"></section>
+
+        <section id="panneau" data-i18n-html="ds.panneau"></section>
+
+        <section id="canevas">
+          <h2 data-i18n-html="ds.canevas.h"></h2>
+          <p class="sub" data-i18n-html="ds.canevas.sub"></p>
+          <div class="spec"><div class="k" data-i18n-html="ds.canevas.k"></div><div class="cv-board board" id="board" tabindex="-1" data-i18n-attr="aria-label:ds.canevas.aria"></div></div>
+        </section>
+
+        <section id="onglets" data-i18n-html="ds.onglets"></section>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="/projects.js"></script>
+<script src="/sidebar.js"></script>
+<script>window.escadrilleSidebar.render(document.getElementById('sidebar'), { current: null });</script>
+<script src="/canvas.js"></script>
+<script>
+// the swatches, read from the computed tokens so the page never carries a copied value
+const draw = () => {
+  const cs = getComputedStyle(document.documentElement);
+  const ROLES = [['--ground', 'ground'], ['--surface', 'surface'], ['--raised', 'raised'], ['--active', 'active'], ['--border', 'border'], ['--rule', 'rule'], ['--control', 'control'],
+    ['--text', 'text'], ['--muted', 'muted'], ['--faint', 'faint'], ['--accent', 'accent'], ['--accent-tint', 'accentTint'], ['--primary', 'primary'],
+    ['--positive', 'positive'], ['--negative', 'negative'], ['--warning', 'warning'], ['--pill-wait-bg', 'waitBg'], ['--pill-wait-ink', 'waitInk']].map(([k, r]) => [k, T('ds.r.' + r)]);
+  document.getElementById('swatches').innerHTML = ROLES.map(([k, role]) => `<div class="sw"><i style="background:var(${k})"></i><div class="k"><b>${k}</b>${role} · ${cs.getPropertyValue(k).trim()}</div></div>`).join('');
+  // four nodes in their states, in the canvas's own markup and sheet (canvas.js mounts the board and injects its CSS)
+  const board = document.getElementById('board');
+  if (!draw.cv) draw.cv = window.EscadrilleCanvas && window.EscadrilleCanvas.mount(board, {}); const cv = draw.cv; // mounted once
+  const world = board.querySelector('.cv-world');
+  const node = (x, letter, name, state, cost, tone, w, sel) => `<div class="cv-node ${tone}${sel ? ' sel' : ''}" role="button" tabindex="0" aria-pressed="${!!sel}" aria-label="${letter} · ${name} · ${state}" style="left:${x}px;top:20px"><span class="cv-badge">${letter}</span><span class="cv-name">${name}</span><span class="cv-s"><span class="cv-state">${state}</span><span class="cv-cost">${cost}</span></span><span class="cv-track" aria-hidden="true"><i style="width:${w}%"></i></span></div>`;
+  const of = (a, b) => T('ds.of', { a: T.usd(a, 2), b: T.usd(b, 0) });
+  if (world) world.innerHTML = node(20, 'A', T('ds.n.a'), T('ds.s.running'), of(2.84, 4), 'run', 71, false) + node(300, 'B', T('ds.n.b'), T('ds.s.waiting'), of(0.9, 2), 'mine', 45, true) + node(580, 'C', T('ds.n.c'), T('ds.s.merged'), of(2.1, 3), 'done', 70, false) + node(860, 'D', T('ds.n.d'), T('ds.s.error'), of(3.2, 3), 'err', 100, false);
+  if (cv && cv.setInset) try { cv.setInset(0); } catch {}
+};
+draw(); escadrilleI18n.onChange(draw);
+</script>
+</body>
+</html>
