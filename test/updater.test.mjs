@@ -119,7 +119,8 @@ test('release-secrets.sh sets the eight secrets, files by redirection, passwords
   let manifest = null; try { manifest = JSON.parse(read('public-manifest.json')); } catch {} // absent from the public tree
   if (manifest) assert.ok(!manifest.include.some((p) => p === 'docs/release.md' || p === 'docs/**'), 'docs/release.md stays private');
   assert.match(s, /gh repo view "\$REPO"/, 'stops when the public repository does not exist yet');
-  const sh = execFileSync('/bin/zsh', ['-n', path.join(root, 'desktop/scripts/release-secrets.sh')], { encoding: 'utf8' });
+  // the docs run it with sh: a POSIX syntax check, on macOS and on the Linux CI (no zsh there)
+  const sh = execFileSync('sh', ['-n',path.join(root, 'desktop/scripts/release-secrets.sh')], { encoding: 'utf8' });
   assert.equal(sh, '');
 });
 
